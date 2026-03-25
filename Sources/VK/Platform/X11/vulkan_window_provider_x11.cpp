@@ -73,13 +73,27 @@ void VulkanWindowProvider_X11::create(DisplayWindowSite *new_site,
 {
 	site = new_site;
 
-	x11_window.create(nullptr, site, desc);
+	::Display *dpy = x11_window.get_display();
+	int screen = DefaultScreen(dpy);
+
+	XVisualInfo vi_template{};
+	vi_template.screen  = screen;
+	vi_template.depth   = 24;
+	vi_template.c_class = TrueColor;
+	int vi_count = 0;
+	XVisualInfo *vi = XGetVisualInfo(dpy,
+		VisualScreenMask | VisualDepthMask | VisualClassMask,
+		&vi_template, &vi_count);
+	if (!vi || vi_count == 0)
+		throw Exception("Failed to find a 24-bit TrueColor XVisualInfo for the Vulkan X11 window");
+
+	x11_window.create(vi, site, desc);
+	XFree(vi);
 
 	create_surface();
 	vk_device->init_present_queue(surface);
 
-	int swap_interval = desc.get_swap_interval();
-	current_swap_interval = (swap_interval == -1) ? 1 : swap_interval;
+	current_swap_interval = desc.get_swap_interval();
 
 	create_swapchain(current_swap_interval);
 	create_image_views();
@@ -107,24 +121,21 @@ VkPresentModeKHR VulkanWindowProvider_X11::choose_present_mode(
 	const std::vector<VkPresentModeKHR> &modes, int swap_interval)
 {
 	if (swap_interval == 0)
+	{
+		for (auto m : modes)
+			if (m == VK_PRESENT_MODE_IMMEDIATE_KHR) return m;
 		for (auto m : modes)
 			if (m == VK_PRESENT_MODE_MAILBOX_KHR) return m;
+	}
 	return VK_PRESENT_MODE_FIFO_KHR;
 }
 
 VkSurfaceFormatKHR VulkanWindowProvider_X11::choose_surface_format(
-	const std::vector<VkSurfaceFormatKHR> &formats, bool want_alpha)
+	const std::vector<VkSurfaceFormatKHR> &formats)
 {
-	if (want_alpha)
-		for (const auto &f : formats)
-			if (f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
-				(f.format == VK_FORMAT_B8G8R8A8_UNORM ||
-				f.format == VK_FORMAT_R8G8B8A8_UNORM))
-				return f;
-
 	for (const auto &f : formats)
-		if (f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
-			f.format == VK_FORMAT_B8G8R8A8_SRGB)
+		if (f.format == VK_FORMAT_B8G8R8A8_SRGB &&
+			f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
 			return f;
 	return formats[0];
 }
@@ -151,8 +162,7 @@ void VulkanWindowProvider_X11::create_swapchain(int swap_interval)
 	if (vkGetPhysicalDeviceSurfacePresentModesKHR(pd, surface, &mode_count, modes.data()) != VK_SUCCESS)
 		throw Exception("Failed to query Vulkan present modes (X11)");
 
-	bool want_alpha = false;
-	VkSurfaceFormatKHR fmt = choose_surface_format(formats, want_alpha);
+	VkSurfaceFormatKHR fmt = choose_surface_format(formats);
 	VkPresentModeKHR pm = choose_present_mode(modes, swap_interval);
 
 	VkExtent2D extent;
@@ -198,19 +208,13 @@ void VulkanWindowProvider_X11::create_swapchain(int swap_interval)
 	}
 
 	sci.preTransform = caps.currentTransform;
-	sci.compositeAlpha = (caps.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
-						&& want_alpha
-						? VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR
-						: VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	sci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	sci.presentMode = pm;
 	sci.clipped = VK_TRUE;
-	sci.oldSwapchain = swapchain;
 
-	VkSwapchainKHR new_swapchain = VK_NULL_HANDLE;
-	if (vkCreateSwapchainKHR(vk_device->get_device(), &sci, nullptr, &new_swapchain) != VK_SUCCESS)
+	if (vkCreateSwapchainKHR(vk_device->get_device(), &sci, nullptr, &swapchain) != VK_SUCCESS)
 		throw Exception("Failed to create Vulkan swapchain (X11)");
 
-	swapchain = new_swapchain;
 	swapchain_image_format = fmt.format;
 	swapchain_extent = extent;
 	current_swap_interval = swap_interval;

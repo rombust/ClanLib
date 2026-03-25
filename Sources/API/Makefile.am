@@ -6,6 +6,15 @@ clanGL_includes = \
 	GL/opengl_context_description.h \
 	GL/opengl_target.h
 
+clanVK_includes = \
+	vk.h \
+	VK/vulkan_target.h \
+	VK/volk.h \
+	VK/vk_mem_alloc_config.h \
+	VK/vk_mem_alloc.h \
+	VK/setup_vulkan.h \
+	VK/vulkan_context_description.h
+
 clanApp_includes = \
 	application.h \
 	App/clanapp.h

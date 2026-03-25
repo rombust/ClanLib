@@ -6,6 +6,7 @@ State/vulkan_depth_stencil_state.cpp \
 State/vulkan_blend_state.cpp \
 State/vulkan_rasterizer_state.cpp \
 precomp.cpp \
+volk.c \
 vulkan_vma.cpp \
 VK1/vulkan_primitives_array_provider.cpp \
 VK1/vulkan_transfer_buffer_provider.cpp \

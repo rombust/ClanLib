@@ -9,7 +9,7 @@
 
 /* This file is part of volk library; see volk.h for version/license details */
 /* clang-format off */
-#include "API/VK/volk.h"
+#include "../API/VK/volk.h"
 
 #ifdef _WIN32
 	typedef const char* LPCSTR;

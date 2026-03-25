@@ -6,7 +6,7 @@ dnl Ensure that a recent enough version of Autoconv is being used
 AC_PREREQ([2.69])
 
 dnl Set the name of the package and its version. (This must be called first)
-AC_INIT([ClanLib],[4.2.0])
+AC_INIT([ClanLib],[4.2.1])
 
 AC_CONFIG_MACRO_DIR(Setup/Unix/m4)
 
@@ -26,7 +26,7 @@ AM_INIT_AUTOMAKE( foreign dist-bzip2 dist-zip 1.5b subdir-objects )
 
 CLANLIB_MAJOR_VERSION=4
 CLANLIB_MINOR_VERSION=2
-CLANLIB_MICRO_VERSION=0
+CLANLIB_MICRO_VERSION=1
 
 CLANLIB_VERSION=$CLANLIB_MAJOR_VERSION.$CLANLIB_MINOR_VERSION.$CLANLIB_MICRO_VERSION
 CLANLIB_RELEASE=$CLANLIB_MAJOR_VERSION$CLANLIB_MINOR_VERSION
@@ -294,6 +294,7 @@ CLANLIB_ARG_ENABLE(docs,          auto, [Build Clanlib API documentation], [whet
 CLANLIB_ARG_ENABLE(clanApp,       auto, [Build clanApp module],            [whether we should try to build clanApp])
 CLANLIB_ARG_ENABLE(clanDisplay,   auto, [Build clanDisplay module],        [whether we should try to build clanDisplay])
 CLANLIB_ARG_ENABLE(clanGL,        auto, [Build clanGL module],             [whether we should try to build clanGL])
+CLANLIB_ARG_ENABLE(clanVK,        auto, [Build clanVK module],             [whether we should try to build clanVK])
 CLANLIB_ARG_ENABLE(clanSound,     auto, [Build clanSound module],          [whether we should try to build clanSound])
 CLANLIB_ARG_ENABLE(clanNetwork,   auto, [Build clanNetwork module],        [whether we should try to build clanNetwork])
 CLANLIB_ARG_ENABLE(clanUI,        auto, [Build clanUI module],             [whether we should try to build clanUI])
@@ -398,8 +399,26 @@ if test "$enable_clanDisplay" != "no"; then
 	fi
 	
 	echo ""
+
+	if test "$enable_clanVK" != "no"; then
+		echo "Checking for clanVK stuff"
+		echo "=============================="
+
+		CLANLIB_CHECK_LIB(VK,[#include <vulkan/vulkan.h>
+			int main() { return 0; }],
+			clanVK, [ *** Cannot find Vulkan header files],[])
+
+		if test "$enable_clanVK" = "auto"; then
+			enable_clanVK=yes;
+		fi
+		echo ""
+	fi
+
+	echo ""
+
 else
 	CLANLIB_DISABLE_MODULE(clanGL,  [ *** clanGL  depends on clanDisplay])
+	CLANLIB_DISABLE_MODULE(clanVK,  [ *** clanVK  depends on clanDisplay])
 
 fi
 
@@ -485,6 +504,7 @@ AC_SUBST(extra_CFLAGS_clanApp)
 AC_SUBST(extra_CFLAGS_clanCore)
 AC_SUBST(extra_CFLAGS_clanDisplay)
 AC_SUBST(extra_CFLAGS_clanGL)
+AC_SUBST(extra_CFLAGS_clanVK)
 AC_SUBST(extra_CFLAGS_clanSound)
 AC_SUBST(extra_CFLAGS_clanNetwork)
 AC_SUBST(extra_CFLAGS_clanUI)
@@ -500,6 +520,7 @@ AC_SUBST(extra_LIBS_clanApp)
 AC_SUBST(extra_LIBS_clanCore)
 AC_SUBST(extra_LIBS_clanDisplay)
 AC_SUBST(extra_LIBS_clanGL)
+AC_SUBST(extra_LIBS_clanVK)
 AC_SUBST(extra_LIBS_clanSound)
 AC_SUBST(extra_LIBS_clanNetwork)
 AC_SUBST(extra_LIBS_clanUI)
@@ -536,6 +557,10 @@ fi
 
 if test "$enable_clanGL" = "yes"; then
 	CLANLIB_ENABLE_MODULES(GL)
+fi
+
+if test "$enable_clanVK" = "yes"; then
+	CLANLIB_ENABLE_MODULES(VK)
 fi
 
 if test "$enable_clanNetwork" = "yes"; then
@@ -705,11 +730,13 @@ fi
 gl_options=""
 if test "$enable_clanGL" != "no"; then
 	if test "$have_xrender" != "no"; then
-		gl_options="$display_options (XRender Enabled)"
+		gl_options="$gl_options (XRender Enabled)"
 	else
-		gl_options="$display_options (XRender Disabled)"
+		gl_options="$gl_options (XRender Disabled)"
 	fi
 fi
+
+vk_options=""
 
 sound_options=""
 if test "$enable_clanSound" != "no"; then
@@ -739,6 +766,7 @@ echo "                   clanCore = yes$core_options"
 echo "                    clanApp = $enable_clanApp"
 echo "                clanDisplay = $enable_clanDisplay$display_options"
 echo "                     clanGL = $enable_clanGL$gl_options"
+echo "                     clanVK = $enable_clanVK$vk_options"
 echo "                  clanSound = $enable_clanSound$sound_options"
 echo "                clanNetwork = $enable_clanNetwork"
 echo "                     clanUI = $enable_clanUI"

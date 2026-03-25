@@ -330,7 +330,7 @@ namespace clan
 		static VkPresentModeKHR choose_present_mode(
 			const std::vector<VkPresentModeKHR> &modes, int swap_interval);
 		static VkSurfaceFormatKHR choose_surface_format(
-			const std::vector<VkSurfaceFormatKHR> &formats, bool want_alpha);
+			const std::vector<VkSurfaceFormatKHR> &formats);
 
 		X11Window x11_window;
 		std::shared_ptr<VulkanDevice> vk_device;

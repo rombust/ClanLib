@@ -289,16 +289,30 @@ namespace clan
 		uint32_t qf_count = 0;
 		vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &qf_count, nullptr);
 
+		// First pass: check if the graphics family also supports present.
+		VkBool32 graphics_supports_present = VK_FALSE;
+		vkGetPhysicalDeviceSurfaceSupportKHR(
+			physical_device, graphics_family_index, surface, &graphics_supports_present);
+		if (graphics_supports_present)
+		{
+			present_family_index = graphics_family_index;
+			vkGetDeviceQueue(device, present_family_index, 0, &present_queue);
+			return;
+		}
+
+		// Second pass: find any other present-capable family.
 		for (uint32_t i = 0; i < qf_count; i++)
 		{
+			if (i == graphics_family_index) continue;
 			VkBool32 supports_present = VK_FALSE;
-			if (vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &supports_present) != VK_SUCCESS)
-				throw Exception("Failed to query Vulkan surface present support");
+			vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &supports_present);
 			if (supports_present)
 			{
-				present_family_index = i;
-				vkGetDeviceQueue(device, present_family_index, 0, &present_queue);
-				return;
+				throw Exception(
+					"Vulkan: present queue family (" + std::to_string(i) + ") differs from "
+					"graphics family (" + std::to_string(graphics_family_index) + "). "
+					"The logical device must be recreated with both families — "
+					"this GPU/driver configuration is not currently supported.");
 			}
 		}
 		throw Exception("No present-capable queue family found");
