@@ -30,9 +30,9 @@
 #include "VK/precomp.h"
 #include "VK/VK1/vulkan_program_object_provider.h"
 #include "VK/VK1/vulkan_shader_object_provider.h"
-#include "VK/VK1/vulkan_shader_object_provider.h"
 #include "VK/vulkan_device.h"
 #include <cstring>
+#include <algorithm>
 
 namespace clan
 {
@@ -43,6 +43,12 @@ namespace clan
 
 	VulkanProgramObjectProvider::~VulkanProgramObjectProvider()
 	{
+		if (descriptor_set_layout != VK_NULL_HANDLE)
+		{
+			vkDestroyDescriptorSetLayout(vk_device->get_device(),
+			 descriptor_set_layout, nullptr);
+			descriptor_set_layout = VK_NULL_HANDLE;
+		}
 		for (auto *s : raw_shaders)
 			delete s;
 	}
@@ -144,6 +150,73 @@ namespace clan
 		link_status = true;
 	}
 
+	void VulkanProgramObjectProvider::build_descriptor_set_layout()
+	{
+		if (descriptor_set_layout != VK_NULL_HANDLE)
+		{
+			vkDestroyDescriptorSetLayout(vk_device->get_device(), descriptor_set_layout, nullptr);
+			descriptor_set_layout = VK_NULL_HANDLE;
+		}
+
+		std::vector<VkDescriptorSetLayoutBinding> bindings;
+		std::vector<VkDescriptorBindingFlags> flags;
+
+		// Samplers — registered via set_uniform1i(name, binding).
+		// Deduplicate in case the same binding appears in both vert and frag.
+		std::vector<uint32_t> unique_samplers = sampler_bindings;
+		std::sort(unique_samplers.begin(), unique_samplers.end());
+		unique_samplers.erase(std::unique(unique_samplers.begin(), unique_samplers.end()), unique_samplers.end());
+
+		for (uint32_t b : unique_samplers)
+		{
+			VkDescriptorSetLayoutBinding lb{};
+			lb.binding = b;
+			lb.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			lb.descriptorCount = 1;
+			lb.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT |	 VK_SHADER_STAGE_COMPUTE_BIT;
+			bindings.push_back(lb);
+			flags.push_back(VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+		}
+
+		// UBOs — registered via set_uniform_buffer_index(block_index, bind_index).
+		for (auto &[block, bind] : ubo_binding_map)
+		{
+			VkDescriptorSetLayoutBinding lb{};
+			lb.binding = static_cast<uint32_t>(bind);
+			lb.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			lb.descriptorCount = 1;
+			lb.stageFlags = VK_SHADER_STAGE_ALL;
+			bindings.push_back(lb);
+			flags.push_back(VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+		}
+
+		// SSBOs — registered via set_storage_buffer_index(buffer_index, bind_index).
+		for (auto &[buf, bind] : ssbo_binding_map)
+		{
+			VkDescriptorSetLayoutBinding lb{};
+			lb.binding = static_cast<uint32_t>(bind);
+			lb.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			lb.descriptorCount = 1;
+			lb.stageFlags = VK_SHADER_STAGE_ALL;
+			bindings.push_back(lb);
+			flags.push_back(VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+		}
+
+		VkDescriptorSetLayoutBindingFlagsCreateInfo flags_ci{};
+		flags_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+		flags_ci.bindingCount = static_cast<uint32_t>(flags.size());
+		flags_ci.pBindingFlags = flags.data();
+
+		VkDescriptorSetLayoutCreateInfo ci{};
+		ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		ci.pNext = &flags_ci;
+		ci.bindingCount = static_cast<uint32_t>(bindings.size());
+		ci.pBindings = bindings.empty() ? nullptr : bindings.data();
+
+		if (vkCreateDescriptorSetLayout(vk_device->get_device(), &ci, nullptr, &descriptor_set_layout) != VK_SUCCESS)
+			throw Exception("Failed to create VkDescriptorSetLayout");
+	}
+
 	void VulkanProgramObjectProvider::validate()
 	{
 		validate_status = link_status;
@@ -165,10 +238,13 @@ namespace clan
 		return (it != attribute_location_map.end()) ? it->second : -1;
 	}
 
-	int VulkanProgramObjectProvider::get_uniform_location(const std::string &name) const
+	int VulkanProgramObjectProvider::get_uniform_location(const std::string & /*name*/) const
 	{
-		auto it = uniform_binding_map.find(name);
-		return (it != uniform_binding_map.end()) ? it->second : -1;
+		// Optimised SPIR-V contains no debug labels; name-based lookup is not
+		// supported on the Vulkan backend. Return -1 so that the public
+		// ProgramObject name-based convenience setters silently no-op, exactly
+		// as they do when a name is not found in an OpenGL program.
+		return -1;
 	}
 
 	int VulkanProgramObjectProvider::get_uniform_buffer_size(int /*block_index*/) const
@@ -176,14 +252,16 @@ namespace clan
 		return 0;
 	}
 
-	int VulkanProgramObjectProvider::get_uniform_buffer_index(const std::string &name) const
+	int VulkanProgramObjectProvider::get_uniform_buffer_index(const std::string & /*name*/) const
 	{
-		return get_uniform_location(name);
+		// Name-based lookup is not supported with optimised SPIR-V.
+		return -1;
 	}
 
-	int VulkanProgramObjectProvider::get_storage_buffer_index(const std::string &name) const
+	int VulkanProgramObjectProvider::get_storage_buffer_index(const std::string & /*name*/) const
 	{
-		return get_uniform_location(name);
+		// Name-based lookup is not supported with optimised SPIR-V.
+		return -1;
 	}
 
 	void VulkanProgramObjectProvider::set_uniform_buffer_index(int block_index, int bind_index)
@@ -207,8 +285,17 @@ namespace clan
 		std::memcpy(push_constants.data() + offset, data, bytes);
 	}
 
-	void VulkanProgramObjectProvider::set_uniform1i(int location, int v)
-	{ write_push_constant(location, &v, sizeof(v)); }
+	void VulkanProgramObjectProvider::set_uniform1i(int location, int /*value*/)
+	{
+		// In Vulkan, sampler binding numbers are fixed in the SPIR-V.
+		// set_uniform1i(name, texture_unit) is called by the application to
+		// declare which binding number a named sampler uses — exactly mirroring
+		// the OpenGL convention. We record the location (= binding number)
+		// so build_descriptor_set_layout() can include it in the layout.
+		// The value (texture unit) equals the binding and is not stored separately.
+		if (location >= 0)
+			register_sampler_binding(location);
+	}
 
 	void VulkanProgramObjectProvider::set_uniform2i(int location, int x, int y)
 	{ int d[2]{x,y}; write_push_constant(location, d, sizeof(d)); }

@@ -76,6 +76,10 @@ namespace clan
 		{
 			return current_layout;
 		}
+		void set_current_layout(VkImageLayout layout)
+		{
+			current_layout = layout;
+		}
 		VkImageViewType get_view_type() const
 		{
 			return view_type;

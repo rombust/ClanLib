@@ -153,7 +153,8 @@ namespace clan
 		img_info.tiling = VK_IMAGE_TILING_OPTIMAL;
 		img_info.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 								VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-								VK_IMAGE_USAGE_SAMPLED_BIT;
+								VK_IMAGE_USAGE_SAMPLED_BIT |
+								VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 		img_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		img_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		if (view_type == VK_IMAGE_VIEW_TYPE_CUBE)
@@ -640,22 +641,11 @@ namespace clan
 
 		VkCommandBuffer cmd = vk_device->begin_single_time_commands();
 
-		{
-			VkImageMemoryBarrier b{};
-			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-			b.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.image = src_image;
-			b.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-			b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-				VK_PIPELINE_STAGE_TRANSFER_BIT,
-				0, 0, nullptr, 0, nullptr, 1, &b);
-		}
+		// Consume the deferred swapchain colour transition (which tracks the real
+		// current layout: UNDEFINED on first use, PRESENT_SRC_KHR after a present,
+		// or COLOR_ATTACHMENT_OPTIMAL if already rendered to this frame) and move
+		// the image directly to TRANSFER_SRC_OPTIMAL for the copy.
+		win->consume_swapchain_color_transition(cmd, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 		{
 			VkImageMemoryBarrier b{};
@@ -706,6 +696,8 @@ namespace clan
 				0, 0, nullptr, 0, nullptr, 1, &b);
 		}
 
+		// Restore swapchain image to COLOR_ATTACHMENT_OPTIMAL and tell the
+		// window provider so it does not re-emit a transition this frame.
 		{
 			VkImageMemoryBarrier b{};
 			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -725,6 +717,7 @@ namespace clan
 
 		vk_device->end_single_time_commands(cmd);
 		current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		win->notify_swapchain_color_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
 
 	void VulkanTextureProvider::copy_subimage_from(int offset_x, int offset_y,
@@ -747,22 +740,9 @@ namespace clan
 
 		VkCommandBuffer cmd = vk_device->begin_single_time_commands();
 
-		{
-			VkImageMemoryBarrier b{};
-			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-			b.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			b.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-			b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			b.image = src_image;
-			b.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-			b.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			b.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-			vkCmdPipelineBarrier(cmd,
-				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-				VK_PIPELINE_STAGE_TRANSFER_BIT,
-				0, 0, nullptr, 0, nullptr, 1, &b);
-		}
+		// Same as copy_image_from: consume the deferred swapchain colour transition
+		// directly into TRANSFER_SRC_OPTIMAL.
+		win->consume_swapchain_color_transition(cmd, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
 		{
 			VkImageMemoryBarrier b{};
@@ -813,6 +793,7 @@ namespace clan
 				0, 0, nullptr, 0, nullptr, 1, &b);
 		}
 
+		// Restore swapchain image to COLOR_ATTACHMENT_OPTIMAL and notify provider.
 		{
 			VkImageMemoryBarrier b{};
 			b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -832,6 +813,7 @@ namespace clan
 
 		vk_device->end_single_time_commands(cmd);
 		current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		win->notify_swapchain_color_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
 
 	void VulkanTextureProvider::rebuild_sampler()

@@ -96,6 +96,10 @@ namespace clan
 		VkRenderPass get_render_pass();
 		VkFramebuffer get_framebuffer();
 
+		void transition_attachments_to_color_write(VkCommandBuffer cmd);
+
+		void notify_attachments_layout_after_pass();
+
 	private:
 		void on_dispose() override;
 		void invalidate();
@@ -112,6 +116,7 @@ namespace clan
 			VkImageView view = VK_NULL_HANDLE;
 			VkFormat format = VK_FORMAT_UNDEFINED;
 			bool used = false;
+			VulkanTextureProvider *texture_provider = nullptr; // non-null for texture attachments
 		};
 
 		static constexpr int MAX_COLOR = 8;

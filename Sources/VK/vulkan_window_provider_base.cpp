@@ -32,10 +32,9 @@
 #include "API/VK/vk_mem_alloc_config.h"
 #include "VK/vulkan_device.h"
 #include "VK/VK1/vulkan_graphic_context_provider.h"
+#include <cstdio>
+#include <cinttypes>
 #include "API/Display/Render/graphic_context.h"
-
-#include <array>
-#include <stdexcept>
 
 namespace clan
 {
@@ -224,7 +223,9 @@ void VulkanWindowProviderBase::create_sync_objects()
 	VkDevice vk_dev = get_vulkan_device()->get_device();
 
 	image_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
-	render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+	// One render-finished semaphore per swapchain image so we never signal a
+	// semaphore that is still being waited on by a pending present operation.
+	render_finished_semaphores.resize(swapchain_images.size());
 	in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
 	images_in_flight.assign(swapchain_images.size(), VK_NULL_HANDLE);
 	swapchain_image_presented.assign(swapchain_images.size(), false);
@@ -240,11 +241,16 @@ void VulkanWindowProviderBase::create_sync_objects()
 	{
 		if (vkCreateSemaphore(vk_dev, &sem_info, nullptr,
 							&image_available_semaphores[i]) != VK_SUCCESS ||
-			vkCreateSemaphore(vk_dev, &sem_info, nullptr,
-							&render_finished_semaphores[i]) != VK_SUCCESS ||
 			vkCreateFence(vk_dev, &fence_info, nullptr,
 						&in_flight_fences[i]) != VK_SUCCESS)
 			throw Exception("Failed to create Vulkan sync objects");
+	}
+
+	for (size_t i = 0; i < swapchain_images.size(); i++)
+	{
+		if (vkCreateSemaphore(vk_dev, &sem_info, nullptr,
+							&render_finished_semaphores[i]) != VK_SUCCESS)
+			throw Exception("Failed to create Vulkan render-finished semaphore");
 	}
 }
 
@@ -289,11 +295,16 @@ void VulkanWindowProviderBase::cleanup_swapchain()
 		vkDestroySwapchainKHR(vk_dev, swapchain, nullptr); swapchain = VK_NULL_HANDLE;
 	}
 
+	// image_available_semaphores and in_flight_fences are sized by MAX_FRAMES_IN_FLIGHT.
 	for (size_t i = 0; i < image_available_semaphores.size(); i++)
 	{
 		if (image_available_semaphores[i] != VK_NULL_HANDLE) vkDestroySemaphore(vk_dev, image_available_semaphores[i], nullptr);
-		if (render_finished_semaphores[i] != VK_NULL_HANDLE) vkDestroySemaphore(vk_dev, render_finished_semaphores[i], nullptr);
 		if (in_flight_fences[i] != VK_NULL_HANDLE) vkDestroyFence (vk_dev, in_flight_fences[i], nullptr);
+	}
+	// render_finished_semaphores is sized by swapchain image count (one per image).
+	for (size_t i = 0; i < render_finished_semaphores.size(); i++)
+	{
+		if (render_finished_semaphores[i] != VK_NULL_HANDLE) vkDestroySemaphore(vk_dev, render_finished_semaphores[i], nullptr);
 	}
 	image_available_semaphores.clear();
 	render_finished_semaphores.clear();
@@ -426,6 +437,37 @@ void VulkanWindowProviderBase::do_flush_frame_commands(GraphicContext &gc)
 			gc_provider->end_render_pass_if_active(command_buffers[current_image_index]);
 	}
 
+	// If the swapchain image was never rendered to in this command buffer
+	// (color_image_needs_transition is still true), transition it to
+	// PRESENT_SRC_KHR now before closing the command buffer.  This ensures
+	// the image is in a defined layout when the continuation command buffer
+	// starts, so do_begin_frame's pending_color_old_layout = PRESENT_SRC_KHR
+	// is correct.  Without this, the continuation CB emits a barrier from
+	// PRESENT_SRC_KHR but the image is actually still in UNDEFINED.
+	if (color_image_needs_transition)
+	{
+		VkCommandBuffer cmd = command_buffers[current_image_index];
+
+		VkImageMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.oldLayout = pending_color_old_layout;
+		barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.image = swapchain_images[current_image_index];
+		barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask= 0;
+
+		vkCmdPipelineBarrier(cmd,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+		color_image_needs_transition = false;
+		pending_color_old_layout= VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	}
+
 	VkResult end_result = vkEndCommandBuffer(command_buffers[current_image_index]);
 	frame_begun = false;
 
@@ -455,6 +497,17 @@ void VulkanWindowProviderBase::do_flush_frame_commands(GraphicContext &gc)
 	image_semaphore_consumed = true;
 
 	continuation_pass_needed = true;
+
+	// If the swapchain colour barrier was consumed this flush (i.e. a render
+	// pass ran against the swapchain image), the render pass finalLayout left
+	// the image in PRESENT_SRC_KHR.  Update pending_color_old_layout so that
+	// the next consume_swapchain_color_transition() (e.g. from copy_image_from)
+	// emits a barrier with the correct oldLayout.
+	if (!color_image_needs_transition)
+	{
+		pending_color_old_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		color_image_needs_transition = true;
+	}
 
 	if (vkQueueWaitIdle(get_vulkan_device()->get_graphics_queue()) != VK_SUCCESS)
 		throw Exception("do_flush_frame_commands: vkQueueWaitIdle failed");
@@ -496,6 +549,16 @@ void VulkanWindowProviderBase::do_flush_frame_commands_no_gc()
 	image_semaphore_consumed = true;
 
 	continuation_pass_needed = true;
+
+	// Same reasoning as do_flush_frame_commands: if the swapchain colour
+	// barrier was consumed during this flush, the render pass finalLayout left
+	// the image in PRESENT_SRC_KHR.  Correct pending_color_old_layout so that
+	// subsequent consume_swapchain_color_transition() calls use the right layout.
+	if (!color_image_needs_transition)
+	{
+		pending_color_old_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		color_image_needs_transition = true;
+	}
 
 	if (vkQueueWaitIdle(get_vulkan_device()->get_graphics_queue()) != VK_SUCCESS)
 		throw Exception("do_flush_frame_commands_no_gc: vkQueueWaitIdle failed");
@@ -545,7 +608,7 @@ void VulkanWindowProviderBase::do_end_frame(GraphicContext &gc)
 		submit_info.commandBufferCount = 1;
 		submit_info.pCommandBuffers = &command_buffers[current_image_index];
 		submit_info.signalSemaphoreCount = 1;
-		submit_info.pSignalSemaphores = &render_finished_semaphores[current_frame];
+		submit_info.pSignalSemaphores = &render_finished_semaphores[current_image_index];
 
 		VkResult submit_result = vkQueueSubmit(get_vulkan_device()->get_graphics_queue(), 1,
 											  &submit_info, in_flight_fences[current_frame]);
@@ -575,7 +638,7 @@ void VulkanWindowProviderBase::do_end_frame(GraphicContext &gc)
 		submit_info.commandBufferCount = 1;
 		submit_info.pCommandBuffers = &command_buffers[current_image_index];
 		submit_info.signalSemaphoreCount = 1;
-		submit_info.pSignalSemaphores = &render_finished_semaphores[current_frame];
+		submit_info.pSignalSemaphores = &render_finished_semaphores[current_image_index];
 
 		VkResult submit_result = vkQueueSubmit(get_vulkan_device()->get_graphics_queue(), 1,
 											  &submit_info, in_flight_fences[current_frame]);
@@ -588,7 +651,7 @@ void VulkanWindowProviderBase::do_end_frame(GraphicContext &gc)
 	VkPresentInfoKHR present_info{};
 	present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	present_info.waitSemaphoreCount = 1;
-	present_info.pWaitSemaphores = &render_finished_semaphores[current_frame];
+	present_info.pWaitSemaphores = &render_finished_semaphores[current_image_index];
 	present_info.swapchainCount = 1;
 	present_info.pSwapchains = &swapchain;
 	present_info.pImageIndices = &current_image_index;
@@ -689,27 +752,59 @@ void VulkanWindowProviderBase::do_recreate_swapchain(GraphicContext &gc)
 
 void VulkanWindowProviderBase::do_emit_swapchain_color_barrier_if_needed()
 {
+	do_consume_swapchain_color_transition(
+		command_buffers[current_image_index],
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+}
+
+void VulkanWindowProviderBase::do_consume_swapchain_color_transition(
+	VkCommandBuffer cmd, VkImageLayout target_layout)
+{
 	if (!color_image_needs_transition) return;
 	color_image_needs_transition = false;
 
-	VkCommandBuffer cmd = command_buffers[current_image_index];
+	// Choose stage/access masks based on the target layout.
+	VkPipelineStageFlags dst_stage;
+	VkAccessFlags dst_access;
+	if (target_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+	{
+		dst_stage  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		dst_access = VK_ACCESS_TRANSFER_READ_BIT;
+	}
+	else // COLOR_ATTACHMENT_OPTIMAL (and any other future target)
+	{
+		dst_stage  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dst_access = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	}
 
 	VkImageMemoryBarrier color_barrier{};
 	color_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	color_barrier.oldLayout = pending_color_old_layout;
-	color_barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	color_barrier.newLayout = target_layout;
 	color_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	color_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	color_barrier.image = swapchain_images[current_image_index];
 	color_barrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 	color_barrier.srcAccessMask = 0;
-	color_barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	color_barrier.dstAccessMask = dst_access;
 
 	vkCmdPipelineBarrier(cmd,
 		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		dst_stage,
 		0, 0, nullptr, 0, nullptr,
 		1, &color_barrier);
+}
+
+void VulkanWindowProviderBase::do_notify_swapchain_color_layout(VkImageLayout layout)
+{
+	// An external command (e.g. a texture copy) has left the swapchain colour
+	// image in 'layout'.  Record this so the next barrier transition starts
+	// from the correct layout.  If the image ended up in COLOR_ATTACHMENT_OPTIMAL
+	// there is no further transition needed this frame; otherwise keep the flag
+	// set so emit_swapchain_color_barrier_if_needed() will still fire.
+	pending_color_old_layout = layout;
+	color_image_needs_transition =
+		(layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 }
 
 } // namespace clan

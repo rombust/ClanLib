@@ -33,6 +33,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_map>
+#include <map>
 #include <array>
 #include <cstring>
 
@@ -64,7 +65,8 @@ namespace clan
 	{
 		VulkanProgramObjectProvider *program ;
 
-		uint64_t layout_hash ;
+		uint64_t layout_hash;	// vertex-attribute input layout
+		VkDescriptorSetLayout descriptor_layout_handle;	// descriptor set layout used to create this pipeline
 
 		VkBool32 blend_enable ;
 		VkBlendFactor src_color ;
@@ -308,14 +310,13 @@ namespace clan
 	private:
 		void on_dispose() override;
 		void create_standard_programs();
-		void create_descriptor_pools();
-		void reset_descriptor_pool(uint32_t frame_index);
-		void create_descriptor_set_layout();
-
 		void create_dummy_texture();
 
 		VkPipeline get_or_create_pipeline(PrimitivesType type);
-		VkPipelineLayout get_or_create_pipeline_layout();
+		VkPipelineLayout get_or_create_pipeline_layout(VkDescriptorSetLayout dsl);
+		VkDescriptorPool alloc_pool_for_frame();
+		void retire_frame_pools(uint32_t frame_index);
+		VkDescriptorSet alloc_descriptor_set(VkDescriptorSetLayout dsl);
 		void emit_push_constants(VkCommandBuffer cmd, VkPipelineLayout layout);
 		void flush_descriptors(VkCommandBuffer cmd, VkPipelineLayout layout);
 		void ensure_render_pass_active();
@@ -366,19 +367,36 @@ namespace clan
 		VkBuffer current_index_buffer = VK_NULL_HANDLE;
 		VkDeviceSize current_index_offset = 0;
 
-		static constexpr int MAX_TEXTURES = 32;
-		static constexpr int MAX_UBOS = 16;
-		static constexpr int MAX_SSBOS = 16;
-		std::array<VulkanTextureProvider *, MAX_TEXTURES> bound_textures{};
-		std::array<VulkanUniformBufferProvider *, MAX_UBOS> bound_ubos{};
-		std::array<VulkanStorageBufferProvider *, MAX_SSBOS> bound_ssbos{};
+		// Sparse binding tables – only slots that have been set are stored.
+		// Key = binding index, value = provider pointer (never null in the map).
+		std::map<int, VulkanTextureProvider *> bound_textures;
+		std::map<int, VulkanUniformBufferProvider *> bound_ubos;
+		std::map<int, VulkanStorageBufferProvider *> bound_ssbos;
 		bool descriptors_dirty = false;
 
-		static constexpr int DESC_POOL_FRAMES = 2; // must match MAX_FRAMES_IN_FLIGHT
-		VkDescriptorPool descriptor_pools[DESC_POOL_FRAMES] = {};
-		VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
+		// The descriptor set layout owned by the active program (from SPIR-V reflection)
+		VkDescriptorSetLayout current_descriptor_layout = VK_NULL_HANDLE;
 		VkDescriptorSet current_descriptor_set = VK_NULL_HANDLE;
 		uint32_t current_frame_index = 0;
+
+		// ---------------------------------------------------------------
+		// Growable per-frame descriptor pool list.
+		// We keep one vector of pools per frame-in-flight.  Pools are
+		// allocated on demand with VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
+		// so individual sets can be returned.  At the start of each frame
+		// all pools retired for that frame index are destroyed.
+		// ---------------------------------------------------------------
+		static constexpr int POOL_FRAMES = 2;	// must match MAX_FRAMES_IN_FLIGHT
+		static constexpr uint32_t POOL_SETS_PER_ALLOC = 64;	// sets per freshly created pool
+
+		struct FramePool
+		{
+			VkDescriptorPool pool = VK_NULL_HANDLE;
+			uint32_t used = 0;
+			uint32_t capacity = 0;
+		};
+		// pools[frame_index] — all pools allocated for that frame; destroyed at frame begin.
+		std::vector<FramePool> frame_pools[POOL_FRAMES];
 
 		std::unordered_map<VulkanPipelineKey,
 						VkPipeline,

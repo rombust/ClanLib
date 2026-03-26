@@ -83,7 +83,6 @@ void VulkanShaderObjectProvider::create(ShaderType type,
 
 	info_log.clear();
 	compile_status = true;
-
 }
 
 void VulkanShaderObjectProvider::compile()

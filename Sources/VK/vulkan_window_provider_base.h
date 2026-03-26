@@ -70,6 +70,9 @@ namespace clan
 
 		virtual void emit_swapchain_color_barrier_if_needed() = 0;
 
+		virtual void consume_swapchain_color_transition(VkCommandBuffer cmd, VkImageLayout target_layout) = 0;
+		virtual void notify_swapchain_color_layout(VkImageLayout layout) = 0;
+
 		virtual bool is_frame_begun() const = 0;
 
 		virtual void flush_frame_commands(GraphicContext &gc) = 0;
@@ -140,6 +143,10 @@ namespace clan
 		void do_recreate_swapchain(GraphicContext &gc);
 
 		void do_emit_swapchain_color_barrier_if_needed();
+
+		void do_consume_swapchain_color_transition(VkCommandBuffer cmd, VkImageLayout target_layout);
+
+		void do_notify_swapchain_color_layout(VkImageLayout layout);
 
 		virtual void create_surface() = 0;
 

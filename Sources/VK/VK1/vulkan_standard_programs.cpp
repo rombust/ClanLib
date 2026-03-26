@@ -97,8 +97,21 @@ void VulkanStandardPrograms::create(VulkanDevice *device,
 	out_path = make_program(path_vert_release_12_spv, path_vert_release_12_spv_len, path_frag_release_12_spv, path_frag_release_12_spv_len);
 #endif
 
-	out_path->set_uniform_binding("ypos_scale", 0);
+	// ypos_scale is a push constant at offset 0 in the path vertex shader.
+	// Write the initial value (1.0) directly
 	out_path->set_uniform1f(0, 1.0f);
+
+	// single_texture: binding 0 - Texture0
+	out_single_texture->register_sampler_binding(0);
+
+	// sprite: bindings 0–15 - Texture0–Texture15
+	for (uint32_t b = 0; b <= 15; ++b)
+		out_sprite->register_sampler_binding(b);
+
+	// path: bindings 0–2 - mask_texture, instance_data, image_texture
+	out_path->register_sampler_binding(0);
+	out_path->register_sampler_binding(1);
+	out_path->register_sampler_binding(2);
 }
 
 } // namespace clan

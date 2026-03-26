@@ -90,6 +90,7 @@ void VulkanFrameBufferProvider::attach_color_texture(int idx, const Texture &tex
 	color[idx].view = p->get_image_view();
 	color[idx].format = p->get_vk_format();
 	color[idx].used = true;
+	color[idx].texture_provider = p;
 	fb_width = p->get_width();
 	fb_height = p->get_height();
 	invalidate();
@@ -294,5 +295,74 @@ VkFramebuffer VulkanFrameBufferProvider::get_framebuffer()
 
 Size VulkanFrameBufferProvider::get_size() const
 { return Size(fb_width, fb_height); }
+
+void VulkanFrameBufferProvider::transition_attachments_to_color_write(VkCommandBuffer cmd)
+{
+	// Collect barriers for every texture colour attachment that is not already
+	// in VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL.
+	std::vector<VkImageMemoryBarrier> barriers;
+
+	for (int i = 0; i < MAX_COLOR; i++)
+	{
+		if (!color[i].used || !color[i].texture_provider) continue;
+
+		VulkanTextureProvider *tp = color[i].texture_provider;
+		VkImageLayout old_layout = tp->get_current_layout();
+		if (old_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) continue;
+
+		VkImageMemoryBarrier b{};
+		b.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		b.oldLayout = old_layout;
+		b.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		b.image = tp->get_image();
+		b.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		b.subresourceRange.baseMipLevel = 0;
+		b.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+		b.subresourceRange.baseArrayLayer = 0;
+		b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+		// Source access: any prior reads (shader sample) or writes (transfer) must finish.
+		b.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+		// Destination: colour attachment write.
+		b.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+		barriers.push_back(b);
+	}
+
+	if (barriers.empty()) return;
+
+	vkCmdPipelineBarrier(cmd,
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		static_cast<uint32_t>(barriers.size()), barriers.data());
+
+	// Update the tracked layout now — the render pass finalLayout will leave
+	// them in COLOR_ATTACHMENT_OPTIMAL, which notify_attachments_layout_after_pass()
+	// will record once the pass ends.
+	for (int i = 0; i < MAX_COLOR; i++)
+	{
+		if (!color[i].used || !color[i].texture_provider) continue;
+		if (color[i].texture_provider->get_current_layout() != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+			color[i].texture_provider->set_current_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	}
+}
+
+void VulkanFrameBufferProvider::notify_attachments_layout_after_pass()
+{
+	// The render pass finalLayout is COLOR_ATTACHMENT_OPTIMAL for every colour
+	// attachment, so record that on each texture so subsequent transitions are
+	// correct.
+	for (int i = 0; i < MAX_COLOR; i++)
+	{
+		if (!color[i].used || !color[i].texture_provider) continue;
+		color[i].texture_provider->set_current_layout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	}
+}
 
 } // namespace clan

@@ -111,9 +111,13 @@ namespace clan
 			return pipeline_stages;
 		}
 
-		void set_uniform_binding(const std::string &name, int binding)
+		// Called by the public ProgramObject::set_uniform1i(name, texture_unit).
+		// In Vulkan, texture_unit == binding number in the SPIR-V.
+		// We record it so build_descriptor_set_layout() knows which bindings
+		// are samplers without needing SPIR-V reflection.
+		void register_sampler_binding(int binding)
 		{
-			uniform_binding_map[name] = binding;
+			sampler_bindings.push_back(static_cast<uint32_t>(binding));
 		}
 
 		const std::vector<uint8_t> &get_push_constants() const
@@ -123,6 +127,24 @@ namespace clan
 		bool has_push_constants() const
 		{
 			return !push_constants.empty();
+		}
+
+		// The VkDescriptorSetLayout for this program, built lazily on first use
+		// so that all set_uniform1i registrations are complete before it is
+		// created.  link() is called before set_uniform1i, so building in
+		// link() would always produce an empty layout.
+		VkDescriptorSetLayout get_descriptor_set_layout()
+		{
+			if (descriptor_set_layout == VK_NULL_HANDLE)
+				build_descriptor_set_layout();
+			return descriptor_set_layout;
+		}
+
+		// Returns all sampler binding numbers registered via set_uniform1i.
+		// Used by flush_descriptors to fill unbound slots with the dummy sampler.
+		const std::vector<uint32_t> &get_sampler_bindings() const
+		{
+			return sampler_bindings;
 		}
 
 	private:
@@ -135,10 +157,15 @@ namespace clan
 		std::deque<std::string> entry_point_names;
 
 		std::unordered_map<std::string, int> attribute_location_map;
-		std::unordered_map<std::string, int> uniform_binding_map;
 
 		std::vector<uint8_t> push_constants;
 		static constexpr int PUSH_CONSTANT_SIZE = 128;
+
+		VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
+
+		std::vector<uint32_t> sampler_bindings; // registered via set_uniform1i
+
+		void build_descriptor_set_layout();
 
 		std::string info_log;
 		bool link_status = false;

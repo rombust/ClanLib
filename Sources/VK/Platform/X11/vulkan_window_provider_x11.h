@@ -317,6 +317,14 @@ namespace clan
 		{
 			do_emit_swapchain_color_barrier_if_needed();
 		}
+		void consume_swapchain_color_transition(VkCommandBuffer cmd, VkImageLayout target_layout) override
+		{
+			do_consume_swapchain_color_transition(cmd, target_layout);
+		}
+		void notify_swapchain_color_layout(VkImageLayout layout) override
+		{
+			do_notify_swapchain_color_layout(layout);
+		}
 
 		void end_frame();
 
@@ -329,8 +337,7 @@ namespace clan
 
 		static VkPresentModeKHR choose_present_mode(
 			const std::vector<VkPresentModeKHR> &modes, int swap_interval);
-		static VkSurfaceFormatKHR choose_surface_format(
-			const std::vector<VkSurfaceFormatKHR> &formats);
+		static VkSurfaceFormatKHR choose_surface_format(const std::vector<VkSurfaceFormatKHR> &formats);
 
 		X11Window x11_window;
 		std::shared_ptr<VulkanDevice> vk_device;

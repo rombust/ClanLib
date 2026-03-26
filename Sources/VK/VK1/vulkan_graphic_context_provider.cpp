@@ -71,10 +71,7 @@ VulkanGraphicContextProvider::VulkanGraphicContextProvider(
 {
 	new (&pipeline_key) VulkanPipelineKey();
 
-	create_descriptor_set_layout();
-	create_descriptor_pools();
 	create_dummy_texture();
-
 	create_standard_programs();
 	reset_program_object();
 
@@ -111,19 +108,17 @@ void VulkanGraphicContextProvider::on_dispose()
 		vkDestroyPipelineLayout(vk_device->get_device(), pl, nullptr);
 	layout_cache.clear();
 
+	// Destroy all live descriptor sets and pools.
 	current_descriptor_set = VK_NULL_HANDLE;
-	for (int i = 0; i < DESC_POOL_FRAMES; i++)
+	current_descriptor_layout = VK_NULL_HANDLE;
+	for (int f = 0; f < POOL_FRAMES; f++)
 	{
-		if (descriptor_pools[i] != VK_NULL_HANDLE)
+		for (auto &fp : frame_pools[f])
 		{
-			vkDestroyDescriptorPool(vk_device->get_device(), descriptor_pools[i], nullptr);
-			descriptor_pools[i] = VK_NULL_HANDLE;
+			if (fp.pool != VK_NULL_HANDLE)
+				vkDestroyDescriptorPool(vk_device->get_device(), fp.pool, nullptr);
 		}
-	}
-	if (descriptor_layout != VK_NULL_HANDLE)
-	{
-		vkDestroyDescriptorSetLayout(vk_device->get_device(), descriptor_layout, nullptr);
-		descriptor_layout = VK_NULL_HANDLE;
+		frame_pools[f].clear();
 	}
 
 	VkDevice dev_d = vk_device->get_device();
@@ -239,83 +234,84 @@ ProgramObject VulkanGraphicContextProvider::get_program_object(
 	}
 }
 
-void VulkanGraphicContextProvider::create_descriptor_set_layout()
+VkDescriptorPool VulkanGraphicContextProvider::alloc_pool_for_frame()
 {
-	const uint32_t total_bindings = MAX_TEXTURES + MAX_UBOS + MAX_SSBOS;
-
-	std::vector<VkDescriptorSetLayoutBinding> bindings;
-	bindings.reserve(total_bindings);
-
-	for (int i = 0; i < MAX_TEXTURES; i++)
-	{
-		VkDescriptorSetLayoutBinding b{};
-		b.binding = static_cast<uint32_t>(i);
-		b.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		b.descriptorCount = 1;
-		b.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT |
-							VK_SHADER_STAGE_COMPUTE_BIT;
-		bindings.push_back(b);
-	}
-	for (int i = 0; i < MAX_UBOS; i++)
-	{
-		VkDescriptorSetLayoutBinding b{};
-		b.binding = static_cast<uint32_t>(MAX_TEXTURES + i);
-		b.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		b.descriptorCount = 1;
-		b.stageFlags = VK_SHADER_STAGE_ALL;
-		bindings.push_back(b);
-	}
-	for (int i = 0; i < MAX_SSBOS; i++)
-	{
-		VkDescriptorSetLayoutBinding b{};
-		b.binding = static_cast<uint32_t>(MAX_TEXTURES + MAX_UBOS + i);
-		b.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		b.descriptorCount = 1;
-		b.stageFlags = VK_SHADER_STAGE_ALL;
-		bindings.push_back(b);
-	}
-
-	std::vector<VkDescriptorBindingFlags> binding_flags(
-		total_bindings, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
-
-	VkDescriptorSetLayoutBindingFlagsCreateInfo flags_ci{};
-	flags_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-	flags_ci.bindingCount = total_bindings;
-	flags_ci.pBindingFlags = binding_flags.data();
-
-	VkDescriptorSetLayoutCreateInfo ci{};
-	ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	ci.pNext = &flags_ci;
-	ci.bindingCount = static_cast<uint32_t>(bindings.size());
-	ci.pBindings = bindings.data();
-
-	if (vkCreateDescriptorSetLayout(vk_device->get_device(), &ci, nullptr,
-									&descriptor_layout) != VK_SUCCESS)
-		throw Exception("Failed to create Vulkan descriptor set layout");
-}
-
-void VulkanGraphicContextProvider::create_descriptor_pools()
-{
-	constexpr uint32_t SETS_PER_FRAME = 256;
-	std::array<VkDescriptorPoolSize, 3> pool_sizes{{
-		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, SETS_PER_FRAME * MAX_TEXTURES },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, SETS_PER_FRAME * MAX_UBOS },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, SETS_PER_FRAME * MAX_SSBOS }
+	// Each pool is small (POOL_SETS_PER_ALLOC sets) to avoid over-reserving.
+	// Per-type counts cover the worst-case per-set usage across all shaders:
+	// up to 16 samplers + 16 UBOs + 16 SSBOs per set.
+	constexpr uint32_t N = POOL_SETS_PER_ALLOC;
+	constexpr uint32_t MAX_TEX_PER_SET = 16;
+	std::array<VkDescriptorPoolSize, 3> sizes{{
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, N * MAX_TEX_PER_SET },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, N * 16 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, N * 16 },
 	}};
 
 	VkDescriptorPoolCreateInfo ci{};
 	ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	ci.flags = 0;
-	ci.maxSets = SETS_PER_FRAME;
-	ci.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
-	ci.pPoolSizes = pool_sizes.data();
+	ci.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	ci.maxSets = N;
+	ci.poolSizeCount = static_cast<uint32_t>(sizes.size());
+	ci.pPoolSizes = sizes.data();
 
-	for (int i = 0; i < DESC_POOL_FRAMES; i++)
+	VkDescriptorPool pool = VK_NULL_HANDLE;
+	if (vkCreateDescriptorPool(vk_device->get_device(), &ci, nullptr, &pool) != VK_SUCCESS)
+		throw Exception("Failed to create Vulkan descriptor pool");
+
+	frame_pools[current_frame_index].push_back({ pool, 0, N });
+	return pool;
+}
+
+void VulkanGraphicContextProvider::retire_frame_pools(uint32_t frame_index)
+{
+	for (auto &fp : frame_pools[frame_index])
 	{
-		if (vkCreateDescriptorPool(vk_device->get_device(), &ci, nullptr,
-								&descriptor_pools[i]) != VK_SUCCESS)
-			throw Exception("Failed to create Vulkan descriptor pool");
+		if (fp.pool != VK_NULL_HANDLE)
+			vkDestroyDescriptorPool(vk_device->get_device(), fp.pool, nullptr);
 	}
+	frame_pools[frame_index].clear();
+}
+
+VkDescriptorSet VulkanGraphicContextProvider::alloc_descriptor_set(VkDescriptorSetLayout dsl)
+{
+	// Find a pool for the current frame that still has capacity.
+	VkDescriptorPool target_pool = VK_NULL_HANDLE;
+	for (auto &fp : frame_pools[current_frame_index])
+	{
+		if (fp.used < fp.capacity)
+		{
+			target_pool = fp.pool;
+			fp.used++;
+			break;
+		}
+	}
+	if (target_pool == VK_NULL_HANDLE)
+	{
+		target_pool = alloc_pool_for_frame();
+		frame_pools[current_frame_index].back().used++;
+	}
+
+	VkDescriptorSetAllocateInfo ai{};
+	ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	ai.descriptorPool = target_pool;
+	ai.descriptorSetCount = 1;
+	ai.pSetLayouts = &dsl;
+
+	VkDescriptorSet ds = VK_NULL_HANDLE;
+	if (vkAllocateDescriptorSets(vk_device->get_device(), &ai, &ds) != VK_SUCCESS)
+		throw Exception("Failed to allocate Vulkan descriptor set");
+
+	return ds;
+}
+
+void VulkanGraphicContextProvider::begin_frame_gc(uint32_t frame_index)
+{
+	current_frame_index = frame_index;
+	// Destroy all pools from the last time this frame slot was rendered.
+	// The GPU has finished with them by the time we cycle back here.
+	retire_frame_pools(frame_index);
+	current_descriptor_set = VK_NULL_HANDLE;
+	current_descriptor_layout = VK_NULL_HANDLE;
 }
 
 void VulkanGraphicContextProvider::create_dummy_texture()
@@ -428,19 +424,6 @@ void VulkanGraphicContextProvider::create_dummy_texture()
 
 	if (vkCreateSampler(dev, &sampler_ci, nullptr, &dummy_sampler) != VK_SUCCESS)
 		throw Exception("Failed to create Vulkan dummy texture sampler");
-}
-
-void VulkanGraphicContextProvider::reset_descriptor_pool(uint32_t frame_index)
-{
-	if (vkResetDescriptorPool(vk_device->get_device(), descriptor_pools[frame_index], 0) != VK_SUCCESS)
-		throw Exception("Failed to reset Vulkan descriptor pool");
-	current_descriptor_set = VK_NULL_HANDLE;
-}
-
-void VulkanGraphicContextProvider::begin_frame_gc(uint32_t frame_index)
-{
-	current_frame_index = frame_index;
-	reset_descriptor_pool(frame_index);
 }
 
 std::unique_ptr<TextureProvider>
@@ -717,46 +700,62 @@ PixelBuffer VulkanGraphicContextProvider::get_pixeldata(const Rect &rect,
 
 void VulkanGraphicContextProvider::set_uniform_buffer(int index, const UniformBuffer &buffer)
 {
-	if (index < 0 || index >= MAX_UBOS) return;
-	bound_ubos[index] =
-		static_cast<VulkanUniformBufferProvider *>(buffer.get_provider());
+	if (index < 0) return;
+	auto *p = static_cast<VulkanUniformBufferProvider *>(buffer.get_provider());
+	if (p)
+		bound_ubos[index] = p;
+	else
+		bound_ubos.erase(index);
 	descriptors_dirty = true;
 }
 
 void VulkanGraphicContextProvider::reset_uniform_buffer(int index)
 {
-	if (index < 0 || index >= MAX_UBOS) return;
-	bound_ubos[index] = nullptr;
+	if (index < 0) return;
+	bound_ubos.erase(index);
 	descriptors_dirty = true;
 }
 
 void VulkanGraphicContextProvider::set_storage_buffer(int index, const StorageBuffer &buffer)
 {
-	if (index < 0 || index >= MAX_SSBOS) return;
-	bound_ssbos[index] =
-		static_cast<VulkanStorageBufferProvider *>(buffer.get_provider());
+	if (index < 0) return;
+	auto *p = static_cast<VulkanStorageBufferProvider *>(buffer.get_provider());
+	if (p)
+		bound_ssbos[index] = p;
+	else
+		bound_ssbos.erase(index);
 	descriptors_dirty = true;
 }
 
 void VulkanGraphicContextProvider::reset_storage_buffer(int index)
 {
-	if (index < 0 || index >= MAX_SSBOS) return;
-	bound_ssbos[index] = nullptr;
+	if (index < 0) return;
+	bound_ssbos.erase(index);
 	descriptors_dirty = true;
 }
 
 void VulkanGraphicContextProvider::set_texture(int unit, const Texture &texture)
 {
-	if (unit < 0 || unit >= MAX_TEXTURES) return;
-	bound_textures[unit] = texture.is_null() ? nullptr
-		: static_cast<VulkanTextureProvider *>(texture.get_provider());
+	if (unit < 0) return;
+	if (!texture.is_null())
+	{
+		auto *p = static_cast<VulkanTextureProvider *>(texture.get_provider());
+		if (p)
+			bound_textures[unit] = p;
+		else
+			bound_textures.erase(unit);
+	}
+	else
+	{
+		bound_textures.erase(unit);
+	}
 	descriptors_dirty = true;
 }
 
 void VulkanGraphicContextProvider::reset_texture(int unit)
 {
-	if (unit < 0 || unit >= MAX_TEXTURES) return;
-	bound_textures[unit] = nullptr;
+	if (unit < 0) return;
+	bound_textures.erase(unit);
 	descriptors_dirty = true;
 }
 
@@ -893,7 +892,7 @@ void VulkanGraphicContextProvider::draw_primitives_array(PrimitivesType type,
 	VkCommandBuffer cmd = render_window->get_current_command_buffer();
 
 	VkPipeline pl = get_or_create_pipeline(type);
-	VkPipelineLayout layout = get_or_create_pipeline_layout();
+	VkPipelineLayout layout = get_or_create_pipeline_layout(current_program->get_descriptor_set_layout());
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pl);
 
 	const VkExtent2D render_extent = current_framebuffer
@@ -921,7 +920,7 @@ void VulkanGraphicContextProvider::draw_primitives_array_instanced(
 		return;
 	VkCommandBuffer cmd = render_window->get_current_command_buffer();
 	VkPipeline pl = get_or_create_pipeline(type);
-	VkPipelineLayout layout = get_or_create_pipeline_layout();
+	VkPipelineLayout layout = get_or_create_pipeline_layout(current_program->get_descriptor_set_layout());
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pl);
 	const VkExtent2D render_extent = current_framebuffer
 		? VkExtent2D{ static_cast<uint32_t>(current_framebuffer->get_size().width),
@@ -957,7 +956,7 @@ void VulkanGraphicContextProvider::draw_primitives_elements(
 		return;
 	VkCommandBuffer cmd = render_window->get_current_command_buffer();
 	VkPipeline pl = get_or_create_pipeline(type);
-	VkPipelineLayout layout = get_or_create_pipeline_layout();
+	VkPipelineLayout layout = get_or_create_pipeline_layout(current_program->get_descriptor_set_layout());
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pl);
 	const VkExtent2D render_extent = current_framebuffer
 		? VkExtent2D{ static_cast<uint32_t>(current_framebuffer->get_size().width),
@@ -986,7 +985,7 @@ void VulkanGraphicContextProvider::draw_primitives_elements_instanced(
 		return;
 	VkCommandBuffer cmd = render_window->get_current_command_buffer();
 	VkPipeline pl = get_or_create_pipeline(type);
-	VkPipelineLayout layout = get_or_create_pipeline_layout();
+	VkPipelineLayout layout = get_or_create_pipeline_layout(current_program->get_descriptor_set_layout());
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pl);
 	const VkExtent2D render_extent = current_framebuffer
 		? VkExtent2D{ static_cast<uint32_t>(current_framebuffer->get_size().width),
@@ -1191,9 +1190,10 @@ void VulkanGraphicContextProvider::flush()
 	// Submission happens at end_frame() in the window provider.
 }
 
-VkPipelineLayout VulkanGraphicContextProvider::get_or_create_pipeline_layout()
+VkPipelineLayout VulkanGraphicContextProvider::get_or_create_pipeline_layout(
+	VkDescriptorSetLayout dsl)
 {
-	auto it = layout_cache.find(descriptor_layout);
+	auto it = layout_cache.find(dsl);
 	if (it != layout_cache.end()) return it->second;
 
 	VkPushConstantRange pc_range{};
@@ -1204,7 +1204,7 @@ VkPipelineLayout VulkanGraphicContextProvider::get_or_create_pipeline_layout()
 	VkPipelineLayoutCreateInfo ci{};
 	ci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	ci.setLayoutCount = 1;
-	ci.pSetLayouts = &descriptor_layout;
+	ci.pSetLayouts = &dsl;
 	ci.pushConstantRangeCount = 1;
 	ci.pPushConstantRanges = &pc_range;
 
@@ -1212,13 +1212,18 @@ VkPipelineLayout VulkanGraphicContextProvider::get_or_create_pipeline_layout()
 	if (vkCreatePipelineLayout(vk_device->get_device(), &ci, nullptr, &layout) != VK_SUCCESS)
 		throw Exception("Failed to create Vulkan pipeline layout");
 
-	layout_cache[descriptor_layout] = layout;
+	layout_cache[dsl] = layout;
 	return layout;
 }
 
 VkPipeline VulkanGraphicContextProvider::get_or_create_pipeline(PrimitivesType type)
 {
 	pipeline_key.topology = to_vk_topology(type);
+
+	// Bake the current descriptor set layout into the pipeline key so that
+	// pipelines are never reused across incompatible descriptor layouts.
+	VkDescriptorSetLayout dsl = current_program->get_descriptor_set_layout();
+	pipeline_key.descriptor_layout_handle = dsl;
 
 	VkRenderPass live_rp = current_framebuffer
 		? current_framebuffer->get_render_pass()
@@ -1319,7 +1324,7 @@ VkPipeline VulkanGraphicContextProvider::get_or_create_pipeline(PrimitivesType t
 	dynamic_state.dynamicStateCount = static_cast<uint32_t>(dyn_states.size());
 	dynamic_state.pDynamicStates = dyn_states.data();
 
-	VkPipelineLayout layout = get_or_create_pipeline_layout();
+	VkPipelineLayout layout = get_or_create_pipeline_layout(dsl);
 
 	const std::vector<VkPipelineShaderStageCreateInfo> stages =
 		current_program->get_stages();
@@ -1377,48 +1382,62 @@ void VulkanGraphicContextProvider::emit_push_constants(VkCommandBuffer cmd,
 void VulkanGraphicContextProvider::flush_descriptors(VkCommandBuffer cmd,
 													VkPipelineLayout layout)
 {
-	if (!descriptors_dirty && current_descriptor_set != VK_NULL_HANDLE)
+	VkDescriptorSetLayout dsl = current_program->get_descriptor_set_layout();
+
+	// Re-bind the existing set if nothing has changed.
+	if (!descriptors_dirty && current_descriptor_set != VK_NULL_HANDLE && current_descriptor_layout == dsl)
 	{
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-								layout, 0, 1, &current_descriptor_set, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &current_descriptor_set, 0, nullptr);
 		return;
 	}
 
-	current_descriptor_set = VK_NULL_HANDLE;
+	current_descriptor_set = alloc_descriptor_set(dsl);
+	current_descriptor_layout = dsl;
 
-	VkDescriptorSetAllocateInfo ai{};
-	ai.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	ai.descriptorPool = descriptor_pools[current_frame_index];
-	ai.descriptorSetCount = 1;
-	ai.pSetLayouts = &descriptor_layout;
-	if (vkAllocateDescriptorSets(vk_device->get_device(), &ai,
-								&current_descriptor_set) != VK_SUCCESS)
-		throw Exception("Failed to allocate Vulkan descriptor set");
+	const std::vector<uint32_t> &declared_sampler_bindings =
+		current_program->get_sampler_bindings();
+
+	int max_tex_binding = -1;
+	for (uint32_t b : declared_sampler_bindings)
+		max_tex_binding = std::max(max_tex_binding, static_cast<int>(b));
+	if (!bound_textures.empty())
+		max_tex_binding = std::max(max_tex_binding, bound_textures.rbegin()->first);
+
+	// Pre-size info arrays indexed directly by binding number.
+	// These must stay alive until vkUpdateDescriptorSets returns.
+	const int img_infos_size  = (max_tex_binding < 0) ? 0 : max_tex_binding + 1;
+	const int ubo_infos_size  = bound_ubos.empty()  ? 0 : bound_ubos.rbegin()->first  + 1;
+	const int ssbo_infos_size = bound_ssbos.empty() ? 0 : bound_ssbos.rbegin()->first + 1;
 
 	std::vector<VkWriteDescriptorSet> writes;
-	std::vector<VkDescriptorImageInfo> img_infos(MAX_TEXTURES);
-	std::vector<VkDescriptorBufferInfo> ubo_infos(MAX_UBOS);
-	std::vector<VkDescriptorBufferInfo> ssbo_infos(MAX_SSBOS);
+	std::vector<VkDescriptorImageInfo> img_infos(img_infos_size);
+	std::vector<VkDescriptorBufferInfo> ubo_infos(ubo_infos_size);
+	std::vector<VkDescriptorBufferInfo> ssbo_infos(ssbo_infos_size);
 
-	static constexpr int SPRITE_TEXTURE_SLOTS = 16;
-
-	for (int i = 0; i < MAX_TEXTURES; i++)
+	// ---- Textures -----------------------------------------------------------
+	// Iterate every declared sampler binding in the program layout.
+	// Fill with the bound texture if present, otherwise use the dummy sampler.
+	// This ensures all declared samplers are valid regardless of brush type.
+	for (int i = 0; i <= max_tex_binding; i++)
 	{
-		auto *tex = bound_textures[i];
-
-		bool needs_dummy = (i < SPRITE_TEXTURE_SLOTS) &&
-						(!tex || tex->get_image_view() == VK_NULL_HANDLE);
-
-		if (needs_dummy)
+		// Only write bindings that are actually declared in the shader layout.
+		bool declared = false;
+		for (uint32_t b : declared_sampler_bindings)
 		{
-			img_infos[i] = { dummy_sampler, dummy_image_view,
-							VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+			if (static_cast<int>(b) == i) { declared = true; break; }
+		}
+		if (!declared) continue;
+
+		auto it = bound_textures.find(i);
+		auto *tex = (it != bound_textures.end()) ? it->second : nullptr;
+
+		if (!tex || tex->get_image_view() == VK_NULL_HANDLE)
+		{
+			img_infos[i] = { dummy_sampler, dummy_image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 		}
 		else
 		{
-			if (!tex || tex->get_image_view() == VK_NULL_HANDLE) continue;
-			img_infos[i] = { tex->get_sampler(), tex->get_image_view(),
-							VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+			img_infos[i] = { tex->get_sampler(), tex->get_image_view(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 		}
 
 		VkWriteDescriptorSet w{};
@@ -1430,42 +1449,41 @@ void VulkanGraphicContextProvider::flush_descriptors(VkCommandBuffer cmd,
 		w.pImageInfo = &img_infos[i];
 		writes.push_back(w);
 	}
-	for (int i = 0; i < MAX_UBOS; i++)
+
+	// ---- UBOs ---------------------------------------------------------------
+	for (auto &[idx, ubo] : bound_ubos)
 	{
-		auto *ubo = bound_ubos[i];
 		if (!ubo || ubo->get_buffer() == VK_NULL_HANDLE) continue;
-		ubo_infos[i] = { ubo->get_buffer(), 0, VK_WHOLE_SIZE };
+		ubo_infos[idx] = { ubo->get_buffer(), 0, VK_WHOLE_SIZE };
 		VkWriteDescriptorSet w{};
 		w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		w.dstSet = current_descriptor_set;
-		w.dstBinding = static_cast<uint32_t>(MAX_TEXTURES + i);
+		w.dstBinding = static_cast<uint32_t>(idx);
 		w.descriptorCount = 1;
 		w.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		w.pBufferInfo = &ubo_infos[i];
+		w.pBufferInfo = &ubo_infos[idx];
 		writes.push_back(w);
 	}
-	for (int i = 0; i < MAX_SSBOS; i++)
+
+	// ---- SSBOs --------------------------------------------------------------
+	for (auto &[idx, ssbo] : bound_ssbos)
 	{
-		auto *ssbo = bound_ssbos[i];
 		if (!ssbo || ssbo->get_buffer() == VK_NULL_HANDLE) continue;
-		ssbo_infos[i] = { ssbo->get_buffer(), 0, VK_WHOLE_SIZE };
+		ssbo_infos[idx] = { ssbo->get_buffer(), 0, VK_WHOLE_SIZE };
 		VkWriteDescriptorSet w{};
 		w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		w.dstSet = current_descriptor_set;
-		w.dstBinding = static_cast<uint32_t>(MAX_TEXTURES + MAX_UBOS + i);
+		w.dstBinding = static_cast<uint32_t>(idx);
 		w.descriptorCount = 1;
 		w.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		w.pBufferInfo = &ssbo_infos[i];
+		w.pBufferInfo = &ssbo_infos[idx];
 		writes.push_back(w);
 	}
 
 	if (!writes.empty())
-		vkUpdateDescriptorSets(vk_device->get_device(),
-							static_cast<uint32_t>(writes.size()),
-							writes.data(), 0, nullptr);
+		vkUpdateDescriptorSets(vk_device->get_device(), static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-							layout, 0, 1, &current_descriptor_set, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &current_descriptor_set, 0, nullptr);
 	descriptors_dirty = false;
 }
 
@@ -1502,6 +1520,8 @@ bool VulkanGraphicContextProvider::try_ensure_render_pass_active()
 
 	if (!current_framebuffer)
 		render_window->emit_swapchain_color_barrier_if_needed();
+	else
+		current_framebuffer->transition_attachments_to_color_write(cmd);
 
 	VkRenderPassBeginInfo rp{};
 	rp.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1543,6 +1563,8 @@ void VulkanGraphicContextProvider::end_render_pass_if_active(VkCommandBuffer /*c
 	if (!render_pass_active) return;
 	vkCmdEndRenderPass(render_window->get_current_command_buffer());
 	render_pass_active = false;
+	if (current_framebuffer)
+		current_framebuffer->notify_attachments_layout_after_pass();
 }
 
 VkPrimitiveTopology VulkanGraphicContextProvider::to_vk_topology(PrimitivesType type)

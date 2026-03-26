@@ -49,39 +49,15 @@ namespace clan
 		void create(ShaderType type, const std::vector<std::string> &sources) override;
 		void compile() override;
 
-		unsigned int get_handle() const override
-		{
-			return 0;
-		}// no handle in Vulkan
-		bool get_compile_status() const override
-		{
-			return compile_status;
-		}
-		ShaderType get_shader_type() const override
-		{
-			return shader_type;
-		}
-		std::string get_info_log() const override
-		{
-			return info_log;
-		}
-		std::string get_shader_source() const override
-		{
-			return glsl_source;
-		}
-		VkShaderModule get_shader_module() const
-		{
-			return shader_module;
-		}
-		VkShaderStageFlagBits get_stage() const
-		{
-			return stage_flags;
-		}
+		unsigned int get_handle() const override { return 0; }
+		bool get_compile_status() const override { return compile_status; }
+		ShaderType get_shader_type() const override { return shader_type; }
+		std::string get_info_log() const override { return info_log; }
+		std::string get_shader_source() const override { return glsl_source; }
 
-		const char *get_entry_point() const
-		{
-			return "main";
-		}
+		VkShaderModule get_shader_module() const { return shader_module; }
+		VkShaderStageFlagBits get_stage() const { return stage_flags; }
+		const char *get_entry_point() const { return "main"; }
 
 	private:
 		static VkShaderStageFlagBits to_stage(ShaderType type);

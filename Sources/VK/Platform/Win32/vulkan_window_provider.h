@@ -191,6 +191,14 @@ namespace clan
 		{
 			do_emit_swapchain_color_barrier_if_needed();
 		}
+		void consume_swapchain_color_transition(VkCommandBuffer cmd, VkImageLayout target_layout) override
+		{
+			do_consume_swapchain_color_transition(cmd, target_layout);
+		}
+		void notify_swapchain_color_layout(VkImageLayout layout) override
+		{
+			do_notify_swapchain_color_layout(layout);
+		}
 
 		VkSurfaceKHR get_surface() const
 		{
