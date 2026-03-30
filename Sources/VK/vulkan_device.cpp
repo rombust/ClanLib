@@ -220,13 +220,15 @@ namespace clan
 			queue_create_infos.push_back(qi);
 		}
 
-		VkPhysicalDeviceFeatures features{};
-		features.samplerAnisotropy = desc.get_sampler_anisotropy() ? VK_TRUE : VK_FALSE;
-		features.fillModeNonSolid = desc.get_fill_mode_non_solid() ? VK_TRUE : VK_FALSE;
-
 		VkPhysicalDeviceDescriptorIndexingFeatures indexing_features{};
 		indexing_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
 		indexing_features.descriptorBindingPartiallyBound = VK_TRUE;
+
+		VkPhysicalDeviceFeatures2 features2{};
+		features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+		features2.features.samplerAnisotropy = desc.get_sampler_anisotropy() ? VK_TRUE : VK_FALSE;
+		features2.features.fillModeNonSolid  = desc.get_fill_mode_non_solid() ? VK_TRUE : VK_FALSE;
+		features2.pNext = &indexing_features;
 
 		std::vector<const char *> device_exts(
 			required_device_extensions.begin(),
@@ -236,10 +238,10 @@ namespace clan
 
 		VkDeviceCreateInfo create_info{};
 		create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-		create_info.pNext = &indexing_features;
+		create_info.pNext = &features2;
 		create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
 		create_info.pQueueCreateInfos = queue_create_infos.data();
-		create_info.pEnabledFeatures = &features;
+		create_info.pEnabledFeatures = nullptr;
 		create_info.enabledExtensionCount = static_cast<uint32_t>(device_exts.size());
 		create_info.ppEnabledExtensionNames = device_exts.data();
 
@@ -451,12 +453,15 @@ namespace clan
 	}
 
 	VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDevice::debug_callback(
-		VkDebugUtilsMessageSeverityFlagBitsEXT /*severity*/,
+		VkDebugUtilsMessageSeverityFlagBitsEXT severity,
 		VkDebugUtilsMessageTypeFlagsEXT /*type*/,
 		const VkDebugUtilsMessengerCallbackDataEXT *data,
 		void * /*user_data*/)
 	{
-		log_event("Vulkan", data->pMessage);
+		if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+			log_event("Vulkan ERROR", data->pMessage);
+		else
+			log_event("Vulkan WARNING", data->pMessage);
 		return VK_FALSE;
 	}
 }
