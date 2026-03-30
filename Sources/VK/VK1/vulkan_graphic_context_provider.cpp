@@ -57,6 +57,7 @@
 #include "API/Display/Render/primitives_array.h"
 #include "API/Display/Render/frame_buffer.h"
 #include "API/Display/Image/pixel_buffer.h"
+#include "Display/2D/render_batch_triangle.h"
 #include <cstring>
 #include <algorithm>
 #include <array>
@@ -70,6 +71,8 @@ VulkanGraphicContextProvider::VulkanGraphicContextProvider(
 	, vk_device(window->get_vulkan_device())
 {
 	new (&pipeline_key) VulkanPipelineKey();
+
+	RenderBatchTriangle::max_textures = 16; // Too many hacks.. (For the sprite shader)
 
 	create_dummy_texture();
 	create_standard_programs();
