@@ -57,7 +57,7 @@ namespace clan
 	Texture2D RenderBatchBuffer::get_texture_rgba32f(GraphicContext &gc)
 	{
 		current_rgba32f_texture++;
-		if (current_rgba32f_texture == num_r8_buffers)
+		if (current_rgba32f_texture == num_rgba32f_buffers)
 			current_rgba32f_texture = 0;
 
 		if (textures_rgba32f[current_rgba32f_texture].is_null())
@@ -89,7 +89,7 @@ namespace clan
 	TransferTexture RenderBatchBuffer::get_transfer_rgba32f(GraphicContext &gc)
 	{
 		current_rgba32f_transfer++;
-		if (current_rgba32f_transfer == num_r8_buffers)
+		if (current_rgba32f_transfer == num_rgba32f_buffers)
 			current_rgba32f_transfer = 0;
 
 		if (transfers_rgba32f[current_rgba32f_transfer].is_null())
