@@ -412,6 +412,8 @@ namespace clan
 		VmaAllocation dummy_image_alloc = VK_NULL_HANDLE;
 		VkImageView dummy_image_view = VK_NULL_HANDLE;
 		VkSampler dummy_sampler = VK_NULL_HANDLE;
+
+		float color_only_point_size = 1.0f;
 	};
 
 } // namespace clan

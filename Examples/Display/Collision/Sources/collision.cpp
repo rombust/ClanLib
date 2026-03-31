@@ -63,6 +63,11 @@ CollisionApp::CollisionApp()
 	canvas = clan::Canvas(window);
 	font = clan::Font("Arial", 16);
 
+	clan::RasterizerStateDescription rasterizer_state_desc;
+	rasterizer_state_desc.set_point_size(7.0f);
+	canvas.set_rasterizer_state(clan::RasterizerState(canvas, rasterizer_state_desc));
+
+
 	other_x_pos = canvas.get_width() / 2;
 	other_y_pos = canvas.get_height() / 2;
 

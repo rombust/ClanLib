@@ -83,6 +83,10 @@ namespace clan
 			depth_bias_constant = 0.0f;
 		}
 		line_width = 1.0f;
+
+		point_size = desc.get_point_size();
+		if (point_size <= 0.0f)
+			point_size = 1.0f;
 	}
 
 	void VulkanRasterizerKey::apply_to(VkPipelineRasterizationStateCreateInfo& rs) const

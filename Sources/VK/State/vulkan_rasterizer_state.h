@@ -59,6 +59,7 @@ namespace clan
 		float depth_bias_constant = 0.0f; // units in glPolygonOffset
 		float depth_bias_slope = 0.0f; // factor in glPolygonOffset
 		float line_width = 1.0f;
+		float point_size = 1.0f;
 
 		bool operator==(const VulkanRasterizerKey &o) const
 		{

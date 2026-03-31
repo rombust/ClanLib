@@ -543,6 +543,14 @@ void VulkanGraphicContextProvider::set_rasterizer_state(RasterizerStateProvider 
 			pipeline_key.depth_bias_constant = key.depth_bias_constant;
 			pipeline_key.depth_bias_slope = key.depth_bias_slope;
 			pipeline_key.line_width = key.line_width;
+			color_only_point_size = key.point_size;
+
+			// If prog_color is active, set the gl_PointSize uniform now
+			if (current_program && current_program == prog_color_only.get_provider())
+			{
+				// Only prog_color_only supports gl_PointSize
+				prog_color_only.set_uniform1f(0, color_only_point_size);
+			}
 
 			scissor_enabled = vk_state->desc.get_enable_scissor();
 		}
@@ -809,6 +817,13 @@ void VulkanGraphicContextProvider::set_program_object(const ProgramObject &progr
 	current_program = program.is_null() ? nullptr
 		: static_cast<VulkanProgramObjectProvider *>(program.get_provider());
 	pipeline_key.program = current_program;
+
+	// If prog_color is active, set the gl_PointSize uniform now
+	if (current_program && current_program == prog_color_only.get_provider())
+	{
+		prog_color_only.set_uniform1f(0, color_only_point_size);
+	}
+
 }
 
 void VulkanGraphicContextProvider::reset_program_object()

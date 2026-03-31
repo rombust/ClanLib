@@ -95,7 +95,7 @@ namespace clan
 		/// \brief Sets the offset factor.
 		void set_polygon_offset(float factor, float units);
 
-		/// \brief The default value is 1.0	(clanGL only)
+		/// \brief The default value is 1.0	(clanGL and clanVK only)
 		void set_point_size(float);
 
 		/// \brief Alpha fade point once minimum size treshold reached. Requires multisampling to be enabled.	(clanGL only)

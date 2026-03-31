@@ -101,6 +101,8 @@ void VulkanStandardPrograms::create(VulkanDevice *device,
 	// Write the initial value (1.0) directly
 	out_path->set_uniform1f(0, 1.0f);
 
+	out_color_only->set_uniform1f(0, 1.0f);
+
 	// single_texture: binding 0 - Texture0
 	out_single_texture->register_sampler_binding(0);
 
