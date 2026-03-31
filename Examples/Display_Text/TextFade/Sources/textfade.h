@@ -41,6 +41,7 @@ private:
 	void draw_text(clan::Canvas &canvas, clan::Font &font, int ypos, const char *text);
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::SlotContainer sc;
 	clan::Canvas canvas;

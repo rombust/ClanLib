@@ -10,7 +10,7 @@ Sources/CollisionLIB/outline_math.o \
 Sources/CollisionLIB/collision_outline_impl.o \
 Sources/collision.o
 
-LIBS=clanApp clanCore clanDisplay clanGL clanXML clanSound
+LIBS=clanApp clanCore clanDisplay clanGL clanVK clanXML clanSound
 
 include ../../../Examples/Makefile.conf
 

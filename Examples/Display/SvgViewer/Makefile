@@ -9,7 +9,7 @@ OBJF = \
 ./Sources/svg_attribute_reader.o \
 ./Sources/svg_transform_scope.o
 
-LIBS=clanApp clanDisplay clanCore clanGL clanXML clanSound
+LIBS=clanApp clanDisplay clanCore clanGL clanVK clanXML clanSound
 
 include ../../Makefile.conf
 

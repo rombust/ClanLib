@@ -47,6 +47,7 @@ private:
 	void update_light(GraphicContext &gc);
 	void calculate_matricies(GraphicContext &gc);
 
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	DisplayWindow window;
 	SlotContainer sc;
 	Canvas canvas;

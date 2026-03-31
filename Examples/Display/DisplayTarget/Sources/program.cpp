@@ -34,10 +34,17 @@ clan::ApplicationInstance<Program> clanapp;
 
 Program::Program()
 {
+#ifdef _DEBUG
+	logger = std::make_unique<clan::ConsoleLogger>();
+#endif
 #if defined(WIN32) && !defined(__MINGW32__)
 	clan::D3DTarget::set_current();
 #else
 	clan::OpenGLTarget::set_current();
+#endif
+
+#ifdef _DEBUG
+	logger = std::make_unique<clan::ConsoleLogger>();
 #endif
 
 	target = std::make_unique<Target>(Target::RenderTarget::legacy_gl);

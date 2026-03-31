@@ -41,6 +41,7 @@ private:
 	void update_text(clan::Canvas &canvas_fb, clan::Font &font, std::vector<clan::SpanLayout> &layout);
 	void draw_text(clan::Canvas &canvas, clan::Angle angle);
 
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::SlotContainer sc;
 	clan::Canvas canvas;

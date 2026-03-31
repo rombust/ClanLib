@@ -40,6 +40,7 @@ private:
 	void on_window_close(clan::DisplayWindow *window);
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window_1;
 	clan::DisplayWindow window_2;
 	clan::SlotContainer sc;

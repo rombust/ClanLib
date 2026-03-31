@@ -40,6 +40,7 @@ public:
 	clan::DisplayWindow window;
 	static DemoState state;
 	std::unique_ptr<DemoScreen> demo;
+	std::unique_ptr<clan::ConsoleLogger> logger;
 
 };
 

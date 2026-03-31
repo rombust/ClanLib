@@ -67,6 +67,7 @@ private:
 	void draw_font_info();
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	DisplayWindow window;
 	bool quit = false;
 	Canvas canvas;

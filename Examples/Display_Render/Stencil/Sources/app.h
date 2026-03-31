@@ -54,6 +54,7 @@ private:
 	void move_balls(float time_diff, int num_balls);
 	clan::Image get_stencil(clan::Canvas &canvas, clan::Rect rect);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 
 	clan::DisplayWindow window;
 	clan::SlotContainer sc;

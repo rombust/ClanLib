@@ -30,15 +30,28 @@
 #include "precomp.h"
 #include "svg_viewer.h"
 
+#define ENABLE_VULKAN
+//#define ENABLE_D3D
+//#define ENABLE_OPENGL
+
 clan::ApplicationInstance<SvgViewer> clanapp;
 
 SvgViewer::SvgViewer()
 {
-#if defined(WIN32) && !defined(__MINGW32__)
+#if defined(ENABLE_D3D)
 	clan::D3DTarget::set_current();
-#else
+#elif defined(ENABLE_OPENGL)
 	clan::OpenGLTarget::set_current();
+#else
+	clan::VulkanContextDescription vk_desc;
+#ifdef _DEBUG
+	logger = std::make_unique<clan::ConsoleLogger>();
+	clan::log_event("Testing", "Logging");
+	vk_desc.set_debug(true);
 #endif
+	clan::VulkanTarget::set_current(vk_desc);
+#endif
+
 
 	clan::DisplayWindowDescription desc;
 	desc.set_title("ClanLib SVG Viewer Example");

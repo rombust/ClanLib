@@ -5,6 +5,7 @@
 #include <ClanLib/display.h>
 #include <ClanLib/d3d.h>
 #include <ClanLib/gl.h>
+#include <ClanLib/vk.h>
 #include <ClanLib/xml.h>
 #include <ClanLib/sound.h>
 #include <cmath>

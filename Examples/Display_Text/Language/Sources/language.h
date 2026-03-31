@@ -39,6 +39,7 @@ private:
 	void on_window_close();
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::SlotContainer sc;
 	clan::Canvas canvas;

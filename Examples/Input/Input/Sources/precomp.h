@@ -6,5 +6,6 @@
 #include <cmath>
 #include <ClanLib/d3d.h>
 #include <ClanLib/gl.h>
+#include <ClanLib/vk.h>
 
 using namespace clan;

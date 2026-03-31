@@ -43,6 +43,7 @@ public:
 	{
 		legacy_gl,
 		opengl,
+		vulkan,
 		d3d
 	};
 

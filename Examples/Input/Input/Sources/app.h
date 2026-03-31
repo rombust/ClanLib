@@ -51,6 +51,7 @@ private:
 	void draw_controller_state(Canvas &canvas, InputDevice controller, int controller_number, int yoffset);
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	bool quit = false;
 
 	DisplayWindow window;

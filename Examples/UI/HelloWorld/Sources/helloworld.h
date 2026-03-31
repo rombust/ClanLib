@@ -48,6 +48,7 @@ public:
 	HelloWorld();
 	bool update() override;
 
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::UIThread ui_thread;
 	std::shared_ptr<clan::WindowManager> window_manager;
 };

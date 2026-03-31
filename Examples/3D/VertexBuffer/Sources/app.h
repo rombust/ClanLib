@@ -41,6 +41,7 @@ private:
 	void create_cube( std::vector<Vec3f> &object_positions, std::vector<Vec3f> &object_normals, std::vector<Vec4f> &object_material_ambient );
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 
 	DisplayWindow window;
 	Canvas canvas;

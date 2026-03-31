@@ -4,7 +4,7 @@ OBJF = \
 ./Sources/theme.o \
 ./Sources/precomp.o
 
-LIBS=clanApp clanDisplay clanCore clanGL clanUI
+LIBS=clanApp clanDisplay clanCore clanGL clanVK clanUI
 
 CXXFLAGS += -I./  -I Sources
 

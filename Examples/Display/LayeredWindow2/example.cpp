@@ -30,8 +30,13 @@
 #include <ClanLib/application.h>
 #include <ClanLib/display.h>
 #include <ClanLib/gl.h>
+#include <ClanLib/vk.h>
 #include <cmath>
 #include <cstdlib>
+
+#define ENABLE_VULKAN
+//#define ENABLE_D3D
+//#define ENABLE_OPENGL
 
 class TuxBall
 {
@@ -63,6 +68,7 @@ private:
 	void on_lost_focus();
 	void on_input_up(const clan::InputEvent &key);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window_center;
 	clan::DisplayWindow window_top;
 	clan::DisplayWindow window_bottom;
@@ -92,9 +98,19 @@ clan::ApplicationInstance<App> clanapp;
 App::App()
 {
 
-	// We support all display targets, in order listed here
+#if defined(ENABLE_D3D)
+	clan::D3DTarget::set_current();
+#elif defined(ENABLE_OPENGL)
 	clan::OpenGLTarget::set_current();
-
+#else
+	clan::VulkanContextDescription vk_desc;
+#ifdef _DEBUG
+	logger = std::make_unique<clan::ConsoleLogger>();
+	clan::log_event("Testing", "Logging");
+	vk_desc.set_debug(true);
+#endif
+	clan::VulkanTarget::set_current(vk_desc);
+#endif
 	// (See README.TXT for more documentation)
 
 	// Define the whole size

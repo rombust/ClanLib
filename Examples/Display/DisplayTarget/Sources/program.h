@@ -36,6 +36,7 @@ class Program : public clan::Application
 public:
 	Program();
 	bool update() override;
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	std::unique_ptr<Target> target;
 };
 

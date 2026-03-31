@@ -44,6 +44,7 @@ private:
 	void display_keys();
 	void control_input();
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	bool quit = false;
 	clan::SlotContainer sc;
 	clan::DisplayWindow window;

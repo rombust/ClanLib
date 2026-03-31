@@ -41,6 +41,7 @@ public:
 	clan::WindowManager window_manager;
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	std::shared_ptr<clan::LabelView> label1;
 	std::shared_ptr<clan::LabelView> label2;
 	std::shared_ptr<clan::LabelView> label3;

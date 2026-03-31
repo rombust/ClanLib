@@ -42,6 +42,7 @@ private:
 	clan::Image create_block(clan::Canvas &canvas, const clan::Colorf &colour);
 	void draw_section(clan::Canvas &canvas, clan::Font &font, int yoffset, const clan::Colorf &background, const clan::Colorf &vertex_colour, const clan::Colorf &image_colour);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	std::string get_text(float value);
 	bool quit = false;
 	clan::SlotContainer sc;

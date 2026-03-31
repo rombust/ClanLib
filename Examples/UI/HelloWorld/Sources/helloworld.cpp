@@ -34,6 +34,10 @@
 
 using namespace clan;
 
+#define ENABLE_VULKAN
+//#define ENABLE_D3D
+//#define ENABLE_OPENGL
+
 // First of all, initialize the library.
 clan::ApplicationInstance<HelloWorld> clanapp;
 
@@ -237,11 +241,20 @@ MainWindow::MainWindow(std::shared_ptr<clan::WindowManager>& window_manager) : m
 HelloWorld::HelloWorld() 
 	: window_manager(std::make_shared<clan::WindowManager>())
 {
-#if defined(WIN32) && !defined(__MINGW32__)
+#if defined(ENABLE_D3D)
 	clan::D3DTarget::set_current();
-#else
+#elif defined(ENABLE_OPENGL)
 	clan::OpenGLTarget::set_current();
+#else
+	clan::VulkanContextDescription vk_desc;
+#ifdef _DEBUG
+	logger = std::make_unique<clan::ConsoleLogger>();
+	clan::log_event("Testing", "Logging");
+	vk_desc.set_debug(true);
 #endif
+	clan::VulkanTarget::set_current(vk_desc);
+#endif
+
 
 	// Create a source for our resources
 	FileResourceDocument doc(FileSystem("../../ThemeAero"));

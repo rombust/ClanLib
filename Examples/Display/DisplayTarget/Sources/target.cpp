@@ -32,20 +32,30 @@
 Target::Target(RenderTarget new_target) : render_target(new_target)
 {
 	clan::OpenGLContextDescription opengl_desc;
+	clan::VulkanContextDescription vk_desc;
 
 	switch (render_target)
 	{
 	case (legacy_gl) :
-		clan::OpenGLTarget::set_current();
+	clan::OpenGLTarget::set_current();
 		opengl_desc.set_version(1, 3, true);
 		clan::OpenGLTarget::set_description(opengl_desc);
 		break;
 
 	case (opengl) :
-		clan::OpenGLTarget::set_current();
+	clan::OpenGLTarget::set_current();
 		opengl_desc.set_version(4, 5, true);
 		clan::OpenGLTarget::set_description(opengl_desc);
 		break;
+
+	case (vulkan):
+	clan::OpenGLTarget::set_current();
+#ifdef _DEBUG
+		vk_desc.set_debug(true);
+#endif
+		clan::VulkanTarget::set_current(vk_desc);
+		break;
+
 #if defined(WIN32) && !defined(__MINGW32__)
 	case (d3d) :
 		clan::D3DTarget::set_current();
@@ -115,14 +125,18 @@ void Target::run_demo()
 			target_font.draw_text(canvas, font_xpos, font_ypos, clan::string_format("2) OpenGL 4.3 Compatable. Context = %1.%2 (clanGL3)", major, minor));
 		}
 	}
+	if (clan::VulkanTarget::is_current())
+	{
+		target_font.draw_text(canvas, font_xpos, font_ypos, "3) Vulkan rendered (clanVK)");
+	}
 
 #if defined(WIN32) && !defined(__MINGW32__)
 	if (clan::D3DTarget::is_current())
-			target_font.draw_text(canvas, font_xpos, font_ypos, "3) Direct3D renderer (clanD3D)");
+			target_font.draw_text(canvas, font_xpos, font_ypos, "4) Direct3D renderer (clanD3D)");
 
-	fps_font.draw_text(canvas, 32, 96, "Press 1,2 or 3 to select targets, or escape to quit.");
+	fps_font.draw_text(canvas, 32, 96, "Press 1,2,3 or 4 to select targets, or escape to quit.");
 #else
-	fps_font.draw_text(canvas, 32, 96, "Press 1 or 2 to select targets, or escape to quit.");
+	fps_font.draw_text(canvas, 32, 96, "Press 1,2 or 3 to select targets, or escape to quit.");
 #endif
 
 	float max_height = (float) (canvas.get_height() + 20);
@@ -155,8 +169,13 @@ void Target::run_demo()
 	{
 		render_target = opengl;
 	}
-#if defined(WIN32) && !defined(__MINGW32__)
 	if (window.get_keyboard().get_keycode(clan::keycode_3))
+	{
+		render_target = vulkan;
+	}
+
+#if defined(WIN32) && !defined(__MINGW32__)
+	if (window.get_keyboard().get_keycode(clan::keycode_4))
 	{
 		render_target = d3d;
 	}

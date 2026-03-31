@@ -31,12 +31,28 @@
 #include "options.h"
 #include <cstdlib>
 
+#define ENABLE_VULKAN
+//#define ENABLE_D3D
+//#define ENABLE_OPENGL
+
 clan::ApplicationInstance<App> clanapp;
 
 App::App()
 {
-	//clan::D3DTarget::set_current();
+#if defined(ENABLE_D3D)
+	clan::D3DTarget::set_current();
+#elif defined(ENABLE_OPENGL)
 	clan::OpenGLTarget::set_current();
+#else
+	clan::VulkanContextDescription vk_desc;
+#ifdef _DEBUG
+	logger = std::make_unique<clan::ConsoleLogger>();
+	clan::log_event("Testing", "Logging");
+	vk_desc.set_debug(true);
+#endif
+	clan::VulkanTarget::set_current(vk_desc);
+#endif
+
 
 	clan::DisplayWindowDescription win_desc;
 	win_desc.set_allow_resize(true);

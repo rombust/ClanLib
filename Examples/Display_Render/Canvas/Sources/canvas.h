@@ -36,6 +36,7 @@ public:
 	bool update() override;
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	void on_keyboard_up(const InputEvent &key);
 	void on_mouse_move(const InputEvent &key);
 	void on_mouse_down(const InputEvent &key);

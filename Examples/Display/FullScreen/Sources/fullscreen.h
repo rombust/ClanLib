@@ -40,6 +40,7 @@ private:
 	void on_window_close();
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	DisplayWindow window;
     SlotContainer sc;
 	Canvas canvas;

@@ -40,6 +40,7 @@ private:
 	void on_input_up(const clan::InputEvent &key);
 	void on_window_close();
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::SlotContainer sc;
 	clan::Canvas canvas;

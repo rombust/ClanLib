@@ -42,6 +42,7 @@ private:
 	void scan();
 	void scan_folder(const std::string &folder_name);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	bool quit = false;
 	clan::SlotContainer sc;
 	clan::DisplayWindow window;

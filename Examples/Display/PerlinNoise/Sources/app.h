@@ -44,6 +44,7 @@ private:
 	void set_user_projection(clan::Canvas &canvas, clan::Sizef &area_size, Options *options);
 	clan::PixelBuffer convert_to_normalmap(clan::PixelBuffer &input);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::Canvas canvas;
 	clan::PerlinNoise noise;

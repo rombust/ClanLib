@@ -39,6 +39,7 @@ private:
 	void on_window_close();
 	void draw_demo(clan::Canvas &canvas, int delta_ms);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::Canvas canvas;
 	clan::SlotContainer sc;

@@ -58,6 +58,7 @@ private:
 	std::string get_logic_operation(clan::LogicOp logic_operation, const std::string &source_fragment, const std::string &dest_fragment);
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::SlotContainer sc;
 	clan::Canvas canvas;

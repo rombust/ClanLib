@@ -49,6 +49,7 @@ private:
 	void draw_graphics(clan::Canvas &canvas, float time_delta);
 	void set_stars(clan::Canvas &canvas, int star_cnt);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	bool quit = false;
 
 	std::vector<Star> stars;

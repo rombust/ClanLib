@@ -46,6 +46,7 @@ private:
 	void draw_gpu(clan::Canvas &canvas, clan::PixelBuffer &gpu_buffer_to_write_into, clan::PixelBuffer &gpu_buffer_to_draw, clan::PixelBuffer &tux, clan::Texture2D &texture_to_write_into, clan::Texture2D &texture_to_draw);
 	void draw_texture(clan::Canvas &canvas, clan::Texture2D &texture, int xpos, int ypos);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::SlotContainer sc;
 	clan::Canvas canvas;

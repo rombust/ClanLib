@@ -4,5 +4,6 @@
 #include <ClanLib/application.h>
 #include <ClanLib/display.h>
 #include <ClanLib/gl.h>
+#include <ClanLib/vk.h>
 #include <ClanLib/d3d.h>
 using namespace clan;

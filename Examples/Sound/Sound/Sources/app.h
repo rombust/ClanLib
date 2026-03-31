@@ -38,6 +38,7 @@ private:
 	void on_input_up(const clan::InputEvent &key);
 	void on_input_down(const clan::InputEvent &key);
 
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	bool quit = false;
 
 	clan::DisplayWindow window;

@@ -30,9 +30,15 @@
 #include <ClanLib/application.h>
 #include <ClanLib/display.h>
 #include <ClanLib/gl.h>
+#include <ClanLib/vk.h>
 #include <ClanLib/d3d.h>
 
 #include <cmath>
+
+#define ENABLE_VULKAN
+//#define ENABLE_D3D
+//#define ENABLE_OPENGL
+
 
 // This is the Application class (That is instantiated by the Program Class)
 class App : public clan::Application
@@ -50,6 +56,7 @@ private:
 	void on_input_up(const clan::InputEvent &key);
 
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::SlotContainer sc;
 	clan::DisplayWindow window;
 	clan::Canvas canvas;
@@ -73,8 +80,20 @@ clan::ApplicationInstance<App> clanapp;
 
 App::App()
 {
-	// We support all display targets, in order listed here
+#if defined(ENABLE_D3D)
+	clan::D3DTarget::set_current();
+#elif defined(ENABLE_OPENGL)
 	clan::OpenGLTarget::set_current();
+#else
+	clan::VulkanContextDescription vk_desc;
+#ifdef _DEBUG
+	logger = std::make_unique<clan::ConsoleLogger>();
+	clan::log_event("Testing", "Logging");
+	vk_desc.set_debug(true);
+#endif
+	clan::VulkanTarget::set_current(vk_desc);
+#endif
+
 
 	// Set the window description
 	clan::DisplayWindowDescription desc_window;

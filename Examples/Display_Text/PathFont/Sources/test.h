@@ -38,6 +38,7 @@ public:
 private:
 	void on_input_up(const clan::InputEvent &key);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::Canvas canvas;
 	clan::SlotContainer sc;

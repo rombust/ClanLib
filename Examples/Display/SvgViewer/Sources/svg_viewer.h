@@ -37,6 +37,7 @@ public:
 	SvgViewer();
 	bool update() override;
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::Canvas canvas;
 	clan::Font font;

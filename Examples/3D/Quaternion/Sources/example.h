@@ -53,6 +53,7 @@ private:
 	void calculate_matricies(GraphicContext &gc);
 	void control_target(Options *options);
 private:
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	DisplayWindow window;
 	SlotContainer sc;
 	Canvas canvas;

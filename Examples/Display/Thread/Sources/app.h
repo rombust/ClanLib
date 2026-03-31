@@ -43,6 +43,7 @@ private:
 	void on_input_up(const clan::InputEvent &key);
 	void worker_thread();
 
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::DisplayWindow window;
 	clan::InputDevice keyboard;
 	clan::Canvas canvas;

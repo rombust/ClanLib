@@ -5,6 +5,7 @@
 #include <ClanLib/display.h>
 #include <ClanLib/sound.h>
 #include <ClanLib/gl.h>
+#include <ClanLib/vk.h>
 #ifdef WIN32
 #include <ClanLib/d3d.h>
 #endif

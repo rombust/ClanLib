@@ -35,6 +35,7 @@ public:
 	FlexTable();
 	bool update() override;
 
+	std::unique_ptr<clan::ConsoleLogger> logger;
 	clan::UIThread ui_thread;
 	std::shared_ptr<clan::TopLevelWindow> window;
 	clan::WindowManager window_manager;

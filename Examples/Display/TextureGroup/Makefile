@@ -6,7 +6,7 @@ OBJF = \
 ./Sources/options.o
 
 CXXFLAGS += -I Sources -I ./
-LIBS=clanApp clanDisplay clanCore clanGL clanUI
+LIBS=clanApp clanDisplay clanCore clanGL clanVK clanUI
 
 include ../../Makefile.conf
 

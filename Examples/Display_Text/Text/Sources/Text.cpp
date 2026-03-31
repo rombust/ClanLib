@@ -60,15 +60,28 @@ static const char *TextToShow[] = {
 NULL
 };
 
+#define ENABLE_VULKAN
+//#define ENABLE_D3D
+//#define ENABLE_OPENGL
+
 clan::ApplicationInstance<ExampleText> clanapp;
 
 ExampleText::ExampleText()
 {
-#if defined(WIN32) && !defined(__MINGW32__)
+#if defined(ENABLE_D3D)
 	clan::D3DTarget::set_current();
-#else
+#elif defined(ENABLE_OPENGL)
 	clan::OpenGLTarget::set_current();
+#else
+	clan::VulkanContextDescription vk_desc;
+#ifdef _DEBUG
+	logger = std::make_unique<clan::ConsoleLogger>();
+	clan::log_event("Testing", "Logging");
+	vk_desc.set_debug(true);
 #endif
+	clan::VulkanTarget::set_current(vk_desc);
+#endif
+
 
 	// Set a videomode
 	clan::DisplayWindowDescription desc;
