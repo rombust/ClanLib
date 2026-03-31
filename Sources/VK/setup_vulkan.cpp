@@ -66,23 +66,20 @@ namespace clan
 		std::shared_ptr<VulkanDevice> shared_device;
 	};
 
-	void VulkanTarget::enable()
+	bool VulkanTarget::is_current()
+	{
+		return std::dynamic_pointer_cast<VulkanTargetProvider>(DisplayTarget::get_current_target()) ? true : false;
+	}
+
+	void VulkanTarget::set_current()
 	{
 		VulkanContextDescription default_desc;
-		set_description(default_desc);
+		set_current(default_desc);
 	}
 
-	void VulkanTarget::enable(VulkanContextDescription &desc)
+	void VulkanTarget::set_current(VulkanContextDescription &desc)
 	{
-		set_description(desc);
-	}
-
-	void VulkanTarget::set_description(VulkanContextDescription &desc)
-	{
-		static VulkanContextDescription stored_desc;
-		stored_desc = desc;
-
-		auto provider = std::make_shared<VulkanTargetProvider>(stored_desc);
+		auto provider = std::make_shared<VulkanTargetProvider>(desc);
 		DisplayTarget::set_current_target(provider);
 	}
 
@@ -91,7 +88,7 @@ namespace clan
 	public:
 		SetupVulkan_Impl()
 		{
-			VulkanTarget::enable();
+			VulkanTarget::set_current();
 		}
 
 		~SetupVulkan_Impl()

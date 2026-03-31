@@ -44,13 +44,16 @@ namespace clan
 	class VulkanTarget
 	{
 	public:
-		/// Enable with default VulkanContextDescription.
-		static void enable();
+		/// \brief Returns true if this display target is the current target
+		///
+		/// This may change after a display window has been created
+		static bool is_current();
 
-		/// Enable with a custom description (validation layers, extensions, etc.).
-		static void enable(VulkanContextDescription &desc);
+		/// \brief Set this display target to be the current target
+		static void set_current();
 
-		/// Directly set the description without enabling.
-		static void set_description(VulkanContextDescription &desc);
+		/// \brief Set this display target to be the current target
+		static void set_current(VulkanContextDescription& desc);
+
 	};
 }
